@@ -8,6 +8,8 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <Folder Include="RawModels" />
+      <Folder Include="Models" />
       <Folder Include="python_scripts" />
     </ItemGroup>
 
