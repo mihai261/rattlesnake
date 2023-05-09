@@ -8,7 +8,7 @@ public class ArgumentModel
     public String Name { get; set; }
     
     [JsonPropertyName("annotation")]
-    public String Annotation { get; set; }
+    public object Annotation { get; set; }
 
     protected bool Equals(ArgumentModel other)
     {

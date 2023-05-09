@@ -15,13 +15,13 @@ public class MethodModel
     public List<ArgumentModel> ArgumentsList { get; set; }
     
     [JsonPropertyName("sub_calls")]
-    public List<String> SubCallsList { get; set; }
+    public List<MethodModel> SubCallsList { get; set; }
 
     public MethodModel()
     {
         ArgumentsList = new List<ArgumentModel>();
         DecoratorsList = new List<string>();
-        SubCallsList = new List<string>();
+        SubCallsList = new List<MethodModel>();
     }
 
     protected bool Equals(MethodModel other)
