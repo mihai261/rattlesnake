@@ -8,6 +8,15 @@ public class MethodModel
     [JsonPropertyName("name")]
     public String Name { get; set; }
     
+    [JsonPropertyName("lines")]
+    public LinesOfCode Lines { get; set; }
+    
+    [JsonPropertyName("complexity")]
+    public int CyclomaticComplexity { get; set; }
+    
+    [JsonPropertyName("parent")]
+    public String Parent { get; set; }
+    
     [JsonPropertyName("decorators")]
     public List<String> DecoratorsList { get; set; }
     
@@ -26,7 +35,7 @@ public class MethodModel
 
     protected bool Equals(MethodModel other)
     {
-        return Name == other.Name && DecoratorsList.SequenceEqual(other.DecoratorsList)
+        return Name == other.Name && Parent == other.Parent && DecoratorsList.SequenceEqual(other.DecoratorsList)
                                   && ArgumentsList.SequenceEqual(other.ArgumentsList) 
                                   && SubCallsList.SequenceEqual(other.SubCallsList);
     }
@@ -41,6 +50,6 @@ public class MethodModel
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(Name, DecoratorsList, ArgumentsList, SubCallsList);
+        return HashCode.Combine(Name, Parent, DecoratorsList, ArgumentsList, SubCallsList);
     }
 }

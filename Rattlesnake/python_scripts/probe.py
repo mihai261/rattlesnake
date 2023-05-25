@@ -40,11 +40,20 @@ class Lines():
 
 
 class Method:
-    def __init__(self, name, decorators, args):
+    def __init__(self, name, lines,  complexity, decorators, args):
         self.name = name
+        self.lines = lines
+        self.complexity = complexity
         self.decorators = decorators
+        self.parent = "*"
         self.args = args
         self.sub_calls = []
+    
+    @classmethod
+    def with_parent_class(self, name, lines, complexity, class_name, decorator, args):
+        mth = self(name, lines, complexity, decorator, args)
+        mth.parent = class_name
+        return mth
 
 
 class Argument:
@@ -52,15 +61,22 @@ class Argument:
         self.name = name
         self.annotation = annotation
 
+class Assignment:
+    def __init__(self, variable_name, class_name):
+        self.variable_name = variable_name
+        self.class_name = class_name
+
 
 class Class:
-    def __init__(self, name):
+    def __init__(self, name, lines, object_assignments):
         self.name = name
+        self.lines = lines
         self.methods = []
+        self.object_assignments = object_assignments
 
     @classmethod
-    def with_superclass(self, name, super_classes):
-        cls = self(name)
+    def with_superclass(self, name, lines, object_assignments, super_classes):
+        cls = self(name, lines, object_assignments)
         cls.super_classes = super_classes
         return cls
 
@@ -84,7 +100,23 @@ class Analyzer(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef):
         global classes_list
+        global code
+        object_assignments = set()
 
+        code.seek(0)
+        lines = count_lines(code, node.lineno, node.end_lineno)
+
+        for statement in node.body:
+            if isinstance(statement, ast.Assign):
+                if len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
+                    if isinstance(statement.value, ast.Call):
+                        func_name = "error_parsing_in_Call_node"
+                        if isinstance(statement.value.func, ast.Name):
+                            func_name = statement.value.func.id
+                        object_assignments.add(Assignment(statement.targets[0].id, func_name))
+                    else:
+                        object_assignments = {element for element in object_assignments if element.variable_name != statement.targets[0].id}
+                
         if node.bases != []:
             bases_list = []
             for base in node.bases:
@@ -92,17 +124,33 @@ class Analyzer(ast.NodeVisitor):
                     bases_list.append(base.value.id + "." + base.attr)
                 else:
                     bases_list.append(base.id)
-            classes_list.append(Class.with_superclass(node.name, bases_list))
+            classes_list.append(Class.with_superclass(node.name, lines, object_assignments, bases_list))
         else:
-            classes_list.append(Class(node.name))
+            classes_list.append(Class(node.name, lines, object_assignments))
 
         self.generic_visit(node)
 
-    """
-    another doc
-    """
+    
+    def calculate_node_complexity(self, node):
+        node_complexity = 0
+        if isinstance(node, ast.If) or isinstance(node, ast.For) or isinstance(node, ast.While) or isinstance(node, ast.BoolOp) or isinstance(node, ast.ExceptHandler) or isinstance(node, ast.With) or isinstance(node, ast.Assert) or isinstance(node, ast.comprehension): 
+                node_complexity += 1
+        for child_node in ast.iter_child_nodes(node):
+            node_complexity += self.calculate_node_complexity(child_node)
+        
+        return node_complexity
+
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
+        global code
+        code.seek(0)
+        lines = count_lines(code, node.lineno, node.end_lineno)
+
+        # calculate cyclomatic complexity
+        method_complexity = 1
+        for child_node in ast.iter_child_nodes(node):
+            method_complexity += self.calculate_node_complexity(child_node)
+
         for item in node.body:
             self.generic_visit(item)
 
@@ -127,14 +175,14 @@ class Analyzer(ast.NodeVisitor):
             if type(node_parent) == ast.ClassDef:
                 for iclass in classes_list:
                     if iclass.name == node_parent.name:
-                        iclass.methods.append(Method(node.name, decorator_names_list, args_list))
+                        iclass.methods.append(Method.with_parent_class(node.name, lines, method_complexity, iclass.name, decorator_names_list, args_list))
             else:
-                methods_list.append(Method(node.name, decorator_names_list, args_list))
+                methods_list.append(Method(node.name, lines, method_complexity, decorator_names_list, args_list))
 
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call):
-        func_name = "error_parsin_in_Call_node"
+        func_name = "error_parsing_in_Call_node"
         if isinstance(node.func, ast.Name):
             func_name = node.func.id
         elif isinstance(node.func, ast.Attribute):
@@ -160,24 +208,27 @@ def parse_attribute(attribute: ast.Attribute):
         return "error_parsing_in_Attr_node"
 
 
-def count_lines(code):
+def count_lines(code, start_line, end_line):
     lines_total = 0
     lines_code = 0
     lines_commented = 0
     lines_docs = 0
     lines_empty = 0
     in_docstring = False
-    for line in code:
+    for i in range(1, start_line):
+        next(code)
+    for i in range(1, end_line - start_line + 1):
+        line = next(code)
         line = line.strip()
         lines_total += 1
-        if ("\"\"\"" in line) and len(line) > 6:
+        if (("\"\"\"" in line) or ("\'\'\'" in line)) and len(line) > 6:
             lines_docs += 1
         else:
-            if ("\"\"\"" in line) and in_docstring:
+            if (("\"\"\"" in line) or ("\'\'\'" in line)) and in_docstring:
                 lines_docs += 1
                 in_docstring = False
             else:
-                if "\"\"\"" in line:
+                if ("\"\"\"" in line) or ("\'\'\'" in line):
                     in_docstring = True
 
                 if in_docstring:
@@ -200,6 +251,7 @@ def main():
     global classes_list
     global methods_list
     global calls_list
+    global code
 
     analyzer = Analyzer()
 
@@ -222,8 +274,12 @@ def main():
             relativePath = "./" + relativePath
         dirData = Folder(relativePath, [])
         for file in [f for f in files if f.endswith(".py")]:
-            with open(os.path.join(dirName, file), 'r') as code:
-                lines_json = count_lines(code)
+            with open(os.path.join(dirName, file), 'r') as source:
+                for line_count, line in enumerate(source):
+                    pass
+                source.seek(0)
+                code = source
+                lines_json = count_lines(code, 0, line_count+1)
 
                 imports_list = []
                 classes_list = []
@@ -251,6 +307,7 @@ def main():
                 classes_list_json = []
                 for iclass in classes_list:
                     iclass.methods = [method.__dict__ for method in iclass.methods]
+                    iclass.object_assignments = [assignment.__dict__ for assignment in iclass.object_assignments]
                     classes_list_json.append(iclass.__dict__)
 
                 methods_list_json = [method.__dict__ for method in methods_list]
@@ -269,6 +326,5 @@ def main():
         f.write(json_payload)
 
 
-"""SOMEDOCS"""
 if __name__ == "__main__":
     main()
