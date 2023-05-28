@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Rattlesnake.Models;
 
-public class FileModel
+public class FileModel : ProjectComponent
 {
     [JsonPropertyName("name")]
     public String Name { get; set; }

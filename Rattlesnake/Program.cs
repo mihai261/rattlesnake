@@ -226,7 +226,7 @@ namespace Rattlesnake
             }
         }
 
-        private static Object findInternalDependency(String importString, List<FolderModel> projectFolders)
+        private static ProjectComponent findInternalDependency(String importString, List<FolderModel> projectFolders)
         {
             // see if import is an entire internal package
             var package = projectFolders.Find(x => x.PackageName == importString);
@@ -241,11 +241,27 @@ namespace Rattlesnake
             {
                 return null;
             }
-            var containingPackageName = importString.Substring(0, importString.LastIndexOf("."));
-            package = projectFolders.Find(x => x.PackageName == containingPackageName);
+            var containingComponentName = importString.Substring(0, importString.LastIndexOf("."));
+            package = projectFolders.Find(x => x.PackageName == containingComponentName);
             if (package != null)
             {
                 var importedFile = package.FilesList.Find(x => x.Name == importString.Substring(importString.LastIndexOf(".")+1) + ".py");
+                if (importedFile != null)
+                {
+                    return importedFile;
+                }
+            }
+            
+            // maybe import a class/function/constant from a module
+            if (!containingComponentName.Contains("."))
+            {
+                return null;
+            }
+            var containingPackageName = containingComponentName.Substring(0, containingComponentName.LastIndexOf("."));
+            package = projectFolders.Find(x => x.PackageName == containingPackageName);
+            if (package != null)
+            {
+                var importedFile = package.FilesList.Find(x => x.Name == containingComponentName.Substring(containingComponentName.LastIndexOf(".")+1) + ".py");
                 if (importedFile != null)
                 {
                     return importedFile;
@@ -270,7 +286,7 @@ namespace Rattlesnake
                 foreach (var rawFolder in rawProject.FoldersList)
                 {
                     FolderModel folder = new FolderModel();
-                    folder.RelativePath = rawFolder.RelativePath;
+                    folder.RelativePath = rawFolder.RelativePath + "/";
                     folder.DirectoryName = rawFolder.DirectoryName;
                     folder.FilesList = new List<FileModel>();
 
@@ -282,7 +298,8 @@ namespace Rattlesnake
                             folder.PackageName = project.Name;
                         }
 
-                        folder.PackageName = project.Name + folder.RelativePath.Replace(".", "").Replace("/", ".");
+                        folder.PackageName = folder.RelativePath.Replace(".", "").Replace("/", ".");
+                        folder.PackageName = folder.PackageName.Remove(folder.PackageName.Length - 1);
                     }
 
                     foreach (var rawFile in rawFolder.FilesList)
@@ -295,6 +312,7 @@ namespace Rattlesnake
                         UpdateFileMethodSubcallsList(rawFile, classes, fileMethods);
 
                         file.Name = rawFile.Name;
+                        file.RelativePath = folder.RelativePath + file.Name;
                         file.ImportsList = rawFile.ImportsList;
                         file.externalDependencies = new List<ExternalDependency>();
                         file.internalDependencies = new List<InternalDependency>();
@@ -308,11 +326,23 @@ namespace Rattlesnake
                     project.FoldersList.Add(folder);
                 }
                 
+                
+                
+                // create results directory if it does not exists
+                var projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
+                Directory.CreateDirectory($"{projectDirectory}/results");
+                
+                // create file linking results CSV
+                var fileLinksStream = File.Create($"{projectDirectory}/results/file_links.csv");
+                var csvContent = "File, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Internal Dependencies, External Dependencies\n";
+                
                 // map file dependencies
                 foreach (var dir in project.FoldersList)
                 {
                     foreach (var file in dir.FilesList)
                     {
+                        var internalDepsPathList = "";
+                        var externalDepsPathList = "";
                         foreach (var import in file.ImportsList)
                         {
                             // check if it's external or internal
@@ -323,17 +353,38 @@ namespace Rattlesnake
                                 dependency.Name = import;
                                 dependency.Source = linkedImport;
                                 file.internalDependencies.Add(dependency);
+                                internalDepsPathList += (dependency.Source.RelativePath + " | ");
                             }
+                            else
+                            {
+                                var depedency = new ExternalDependency();
+                                depedency.Name = import;
+                                file.externalDependencies.Add(depedency);
+                                externalDepsPathList += (depedency.Name + " | ");
+                            }
+                        }
+
+                        if (internalDepsPathList.Length != 0)
+                        {
+                            internalDepsPathList = internalDepsPathList.Remove(internalDepsPathList.Length - 2);
 
                         }
+                        
+                        if (externalDepsPathList.Length != 0)
+                        {
+                            externalDepsPathList = externalDepsPathList.Remove(externalDepsPathList.Length - 2);
+
+                        }
+
+                        csvContent += $"{file.Name}, {file.Lines.LinesTotal}, {file.Lines.LinesCoded}, {file.Lines.LinesCommented}, {file.Lines.linesDocs}, {internalDepsPathList}, {externalDepsPathList}\n";
                     }
                 }
-
-                // create results directory if it does not exists
-                var projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
-                Directory.CreateDirectory($"{projectDirectory}/results");
                 
-                
+                // write to file
+                using (StreamWriter writer = new StreamWriter(fileLinksStream))
+                {
+                    writer.Write(csvContent);
+                }
             }
             else
             {

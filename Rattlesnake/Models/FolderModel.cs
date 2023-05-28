@@ -2,11 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace Rattlesnake.Models;
 
-public class FolderModel
+public class FolderModel : ProjectComponent
 {
-    [JsonPropertyName("path")]
-    public String RelativePath { get; set; }
-    
     [JsonPropertyName("name")]
     public String DirectoryName { get; set; }
     

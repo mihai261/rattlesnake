@@ -220,7 +220,7 @@ def count_lines(code, start_line, end_line):
         line = next(code)
         line = line.strip()
         lines_total += 1
-        if (("\"\"\"" in line) or ("\'\'\'" in line)) and len(line) > 6:
+        if (line.startswith("\"\"\"") or line.startswith("\'\'\'")) and (line.endswith("\"\"\"") or line.endswith("\'\'\'")):
             lines_docs += 1
         else:
             if (("\"\"\"" in line) or ("\'\'\'" in line)) and in_docstring:
@@ -269,13 +269,13 @@ def main():
         relativePath = dirName.split(sys.argv[1])[-1]
         if relativePath.startswith("/"):
             folderName = relativePath.split("/")[-1]
-            relativePath = "." + relativePath
+            relativePath = projectName + relativePath
         elif relativePath == "":
             folderName = projectName
-            relativePath = "." + relativePath
+            relativePath = projectName + relativePath
         else:
             folderName = relativePath.split("/")[-1]
-            relativePath = "./" + relativePath
+            relativePath = projectName + "/" + relativePath
         dirData = Folder(relativePath, folderName, [])
         for file in [f for f in files if f.endswith(".py")]:
             with open(os.path.join(dirName, file), 'r') as source:
