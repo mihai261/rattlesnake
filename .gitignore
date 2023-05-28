@@ -4,5 +4,6 @@ obj/
 riderModule.iml
 /_ReSharper.Caches/
 .idea
+results/
 .DS_Store
 /Rattlesnake/python_scripts/results/

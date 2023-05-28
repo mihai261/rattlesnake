@@ -1,5 +1,4 @@
-﻿using System.Linq.Expressions;
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.RegularExpressions;
 using Rattlesnake.Models;
 using Rattlesnake.RawModels;
@@ -226,6 +225,35 @@ namespace Rattlesnake
                 }
             }
         }
+
+        private static Object findInternalDependency(String importString, List<FolderModel> projectFolders)
+        {
+            // see if import is an entire internal package
+            var package = projectFolders.Find(x => x.PackageName == importString);
+            if (package != null)
+            {
+                return package;
+            }
+            
+            
+            // see if import is a file from an internal package
+            if (!importString.Contains("."))
+            {
+                return null;
+            }
+            var containingPackageName = importString.Substring(0, importString.LastIndexOf("."));
+            package = projectFolders.Find(x => x.PackageName == containingPackageName);
+            if (package != null)
+            {
+                var importedFile = package.FilesList.Find(x => x.Name == importString.Substring(importString.LastIndexOf(".")+1) + ".py");
+                if (importedFile != null)
+                {
+                    return importedFile;
+                }
+            }
+
+            return null;
+        }
         
         static void Main(string[] args)
         {
@@ -238,13 +266,25 @@ namespace Rattlesnake
                 ProjectModel project = new ProjectModel();
                 project.Name = rawProject.Name;
                 project.FoldersList = new List<FolderModel>();
-                
+
                 foreach (var rawFolder in rawProject.FoldersList)
                 {
                     FolderModel folder = new FolderModel();
                     folder.RelativePath = rawFolder.RelativePath;
+                    folder.DirectoryName = rawFolder.DirectoryName;
                     folder.FilesList = new List<FileModel>();
-                    
+
+                    if (rawFolder.FilesList.Find(x => x.Name == "__init__.py") != null)
+                    {
+                        folder.IsPackage = true;
+                        if (folder.RelativePath == ".")
+                        {
+                            folder.PackageName = project.Name;
+                        }
+
+                        folder.PackageName = project.Name + folder.RelativePath.Replace(".", "").Replace("/", ".");
+                    }
+
                     foreach (var rawFile in rawFolder.FilesList)
                     {
                         FileModel file = new FileModel();
@@ -256,6 +296,8 @@ namespace Rattlesnake
 
                         file.Name = rawFile.Name;
                         file.ImportsList = rawFile.ImportsList;
+                        file.externalDependencies = new List<ExternalDependency>();
+                        file.internalDependencies = new List<InternalDependency>();
                         file.Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(rawFile.Lines));
                         file.MethodsList = fileMethods;
                         file.ClassesList = classes;
@@ -265,7 +307,33 @@ namespace Rattlesnake
                     
                     project.FoldersList.Add(folder);
                 }
+                
+                // map file dependencies
+                foreach (var dir in project.FoldersList)
+                {
+                    foreach (var file in dir.FilesList)
+                    {
+                        foreach (var import in file.ImportsList)
+                        {
+                            // check if it's external or internal
+                            var linkedImport = findInternalDependency(import, project.FoldersList);
+                            if (linkedImport != null)
+                            {
+                                var dependency = new InternalDependency();
+                                dependency.Name = import;
+                                dependency.Source = linkedImport;
+                                file.internalDependencies.Add(dependency);
+                            }
 
+                        }
+                    }
+                }
+
+                // create results directory if it does not exists
+                var projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
+                Directory.CreateDirectory($"{projectDirectory}/results");
+                
+                
             }
             else
             {

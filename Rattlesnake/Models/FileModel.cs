@@ -12,6 +12,9 @@ public class FileModel
     
     [JsonPropertyName("imports")]
     public List<String> ImportsList { get; set; }
+
+    public List<InternalDependency> internalDependencies;
+    public List<ExternalDependency> externalDependencies;
     
     [JsonPropertyName("classes")]
     public List<ClassModel> ClassesList { get; set; }

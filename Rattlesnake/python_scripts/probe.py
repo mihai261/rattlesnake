@@ -16,7 +16,8 @@ class Project:
 
 
 class Folder:
-    def __init__(self, name, files):
+    def __init__(self, path, name, files):
+        self.path = path
         self.name = name
         self.files = files
 
@@ -146,10 +147,8 @@ class Analyzer(ast.NodeVisitor):
         code.seek(0)
         lines = count_lines(code, node.lineno, node.end_lineno)
 
-        # calculate cyclomatic complexity
-        method_complexity = 1
-        for child_node in ast.iter_child_nodes(node):
-            method_complexity += self.calculate_node_complexity(child_node)
+        # calculate cyclomatic complexity (add one to account for start of method)
+        method_complexity = self.calculate_node_complexity(node) + 1
 
         for item in node.body:
             self.generic_visit(item)
@@ -268,11 +267,16 @@ def main():
 
     for (dirName, files) in [(d, f) for d, s, f in os.walk(sys.argv[1]) if not d.startswith("./.")]:
         relativePath = dirName.split(sys.argv[1])[-1]
-        if relativePath.startswith("/") or relativePath == "":
+        if relativePath.startswith("/"):
+            folderName = relativePath.split("/")[-1]
+            relativePath = "." + relativePath
+        elif relativePath == "":
+            folderName = projectName
             relativePath = "." + relativePath
         else:
+            folderName = relativePath.split("/")[-1]
             relativePath = "./" + relativePath
-        dirData = Folder(relativePath, [])
+        dirData = Folder(relativePath, folderName, [])
         for file in [f for f in files if f.endswith(".py")]:
             with open(os.path.join(dirName, file), 'r') as source:
                 for line_count, line in enumerate(source):
