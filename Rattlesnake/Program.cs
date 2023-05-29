@@ -57,14 +57,16 @@ namespace Rattlesnake
             return linkedClasses;
         }
 
-        private static List<MethodModel> ConvertFileMethods(RawFileModel rawFile, List<ClassModel> fileClasses)
+        private static List<MethodModel> ConvertFileMethods(RawFileModel rawFile, String relativePath, List<ClassModel> fileClasses)
         {
             var fileMethods = new List<MethodModel>();
             // map file methods
             foreach (var mth in rawFile.MethodsList)
             {
                 MethodModel currentMethod = new MethodModel();
+                currentMethod.RelativePath = relativePath;
                 currentMethod.Name = mth.Name;
+                currentMethod.TotalNumberOfSubCalls = mth.SubCallsList.Count;
                 currentMethod.CyclomaticComplexity = mth.CyclomaticComplexity;
                 currentMethod.Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(mth.Lines));
                 currentMethod.Parent = mth.Parent;
@@ -97,7 +99,7 @@ namespace Rattlesnake
                     var fileMethod = fileMethods.Find(x => x.Name.Equals(subcall));
                     if (fileMethod != null)
                     {
-                        currentMethod.SubCallsList.Add(fileMethod);
+                        currentMethod.LocalSubCallsList.Add(fileMethod);
                     }
                 }
             }
@@ -106,7 +108,7 @@ namespace Rattlesnake
             return fileMethods;
         }
 
-        private static void ConvertClassMethods(RawFileModel rawFile, List<ClassModel> classes, List<MethodModel> fileMethods)
+        private static void ConvertClassMethods(RawFileModel rawFile, String relativePath, List<ClassModel> classes, List<MethodModel> fileMethods)
         {
             // map class methods
             foreach (var cls in rawFile.ClassesList)
@@ -118,6 +120,8 @@ namespace Rattlesnake
                 {
                     MethodModel currentMethod = new MethodModel();
                     currentMethod.Name = mth.Name;
+                    currentMethod.TotalNumberOfSubCalls = mth.SubCallsList.Count;
+                    currentMethod.RelativePath = relativePath;
                     currentMethod.CyclomaticComplexity = mth.CyclomaticComplexity;
                     currentMethod.Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(mth.Lines));
                     currentMethod.Parent = mth.Parent;
@@ -143,7 +147,7 @@ namespace Rattlesnake
                         var fileMethod = fileMethods.Find(x => x.Name.Equals(subcall));
                         if (fileMethod != null)
                         {
-                            currentMethod.SubCallsList.Add(fileMethod);
+                            currentMethod.LocalSubCallsList.Add(fileMethod);
                             continue;
                         }
 
@@ -162,7 +166,7 @@ namespace Rattlesnake
                                         var methodInstance = assignment.ClassName.MethodsList.Find(x => x.Name.Equals(methodName));
                                         if (methodInstance != null)
                                         {
-                                            currentMethod.SubCallsList.Add(methodInstance);
+                                            currentMethod.LocalSubCallsList.Add(methodInstance);
                                         }
                                     }
                                 }
@@ -181,7 +185,7 @@ namespace Rattlesnake
                                             x.Name.Equals(Regex.Split(subcall, @".*\..*")[1]));
                                         if (methodInstance != null)
                                         {
-                                            currentMethod.SubCallsList.Add(methodInstance);
+                                            currentMethod.LocalSubCallsList.Add(methodInstance);
                                         }
                                     }
                                 }
@@ -217,7 +221,7 @@ namespace Rattlesnake
                                     x.Name.Equals(Regex.Split(subcall, @"\.")[1]));
                                 if (methodInstance != null)
                                 {
-                                    currentMethod.SubCallsList.Add(methodInstance);
+                                    currentMethod.LocalSubCallsList.Add(methodInstance);
                                 }
                             }
                         }
@@ -305,14 +309,14 @@ namespace Rattlesnake
                     foreach (var rawFile in rawFolder.FilesList)
                     {
                         FileModel file = new FileModel();
-                        
-                        List<ClassModel> classes = ConvertClassesWithBaseLinks(rawFile);
-                        List<MethodModel> fileMethods = ConvertFileMethods(rawFile, classes);
-                        ConvertClassMethods(rawFile, classes, fileMethods);
-                        UpdateFileMethodSubcallsList(rawFile, classes, fileMethods);
-
                         file.Name = rawFile.Name;
                         file.RelativePath = folder.RelativePath + file.Name;
+
+                        List<ClassModel> classes = ConvertClassesWithBaseLinks(rawFile);
+                        List<MethodModel> fileMethods = ConvertFileMethods(rawFile, file.RelativePath, classes);
+                        ConvertClassMethods(rawFile, file.RelativePath, classes, fileMethods);
+                        UpdateFileMethodSubcallsList(rawFile, classes, fileMethods);
+
                         file.ImportsList = rawFile.ImportsList;
                         file.externalDependencies = new List<ExternalDependency>();
                         file.internalDependencies = new List<InternalDependency>();
@@ -326,15 +330,17 @@ namespace Rattlesnake
                     project.FoldersList.Add(folder);
                 }
                 
-                
-                
                 // create results directory if it does not exists
                 var projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
                 Directory.CreateDirectory($"{projectDirectory}/results");
                 
                 // create file linking results CSV
                 var fileLinksStream = File.Create($"{projectDirectory}/results/file_links.csv");
-                var csvContent = "File, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Internal Dependencies, External Dependencies\n";
+                var csvContentFileLinks = "File, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Internal Dependencies, External Dependencies\n";
+                
+                // create method statistics results CSV
+                var methodStatsStream = File.Create($"{projectDirectory}/results/method_stats.csv");
+                var csvContentMethodStats = "Method Name, Relative Path, Parent Class, Cyclomatic Complexity, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Total No. Of Subcalls, No. Of Local Subcalls\n";
                 
                 // map file dependencies
                 foreach (var dir in project.FoldersList)
@@ -375,15 +381,41 @@ namespace Rattlesnake
                             externalDepsPathList = externalDepsPathList.Remove(externalDepsPathList.Length - 2);
 
                         }
+                        
+                        // build file method stats CSV content
+                        foreach (var method in file.MethodsList)
+                        {
+                            var parent = method.Parent != "*" ? method.Parent : "N/A";
+                            csvContentMethodStats +=
+                                $"{method.Name}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}\n";
+                        }
 
-                        csvContent += $"{file.Name}, {file.Lines.LinesTotal}, {file.Lines.LinesCoded}, {file.Lines.LinesCommented}, {file.Lines.linesDocs}, {internalDepsPathList}, {externalDepsPathList}\n";
+                        // build class method stats CSV content
+                        foreach (var cls in file.ClassesList)
+                        {
+                            foreach (var method in cls.MethodsList)
+                            {
+                                var parent = method.Parent != "*" ? method.Parent : "N/A";
+                                csvContentMethodStats +=
+                                    $"{method.Name}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}\n";
+                            }
+                        }
+                        
+                        // build file links CSV content
+                        csvContentFileLinks += $"{file.Name}, {file.Lines.LinesTotal}, {file.Lines.LinesCoded}, {file.Lines.LinesCommented}, {file.Lines.linesDocs}, {file.Lines.LinesEmpty}, {internalDepsPathList}, {externalDepsPathList}\n";
                     }
                 }
                 
-                // write to file
+                // write file links
                 using (StreamWriter writer = new StreamWriter(fileLinksStream))
                 {
-                    writer.Write(csvContent);
+                    writer.Write(csvContentFileLinks);
+                }
+                
+                // write method stats
+                using (StreamWriter writer = new StreamWriter(methodStatsStream))
+                {
+                    writer.Write(csvContentMethodStats);
                 }
             }
             else
