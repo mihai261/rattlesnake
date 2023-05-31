@@ -49,7 +49,7 @@ class Method:
         self.parent = "*"
         self.args = args
         self.sub_calls = []
-    
+
     @classmethod
     def with_parent_class(self, name, lines, complexity, class_name, decorator, args):
         mth = self(name, lines, complexity, decorator, args)
@@ -80,6 +80,15 @@ class Class:
         cls = self(name, lines, object_assignments)
         cls.super_classes = super_classes
         return cls
+
+
+def parse_attribute(attribute: ast.Attribute):
+    if isinstance(attribute.value, ast.Name):
+        return attribute.value.id + "." + attribute.attr
+    elif isinstance(attribute.value, ast.Attribute):
+        return parse_attribute(attribute.value) + "." + attribute.attr
+    else:
+        return "error_parsing_in_Attr_node"
 
 
 class Analyzer(ast.NodeVisitor):
@@ -117,13 +126,13 @@ class Analyzer(ast.NodeVisitor):
                         object_assignments.add(Assignment(statement.targets[0].id, func_name))
                     else:
                         object_assignments = {element for element in object_assignments if element.variable_name != statement.targets[0].id}
-                
+
         if node.bases != []:
             bases_list = []
             for base in node.bases:
                 if isinstance(base, ast.Attribute):
-                    bases_list.append(base.value.id + "." + base.attr)
-                else:
+                    bases_list.append(parse_attribute(base))
+                elif hasattr(base, "id"):
                     bases_list.append(base.id)
             classes_list.append(Class.with_superclass(node.name, lines, object_assignments, bases_list))
         else:
@@ -131,14 +140,14 @@ class Analyzer(ast.NodeVisitor):
 
         self.generic_visit(node)
 
-    
+
     def calculate_node_complexity(self, node):
         node_complexity = 0
-        if isinstance(node, ast.If) or isinstance(node, ast.For) or isinstance(node, ast.While) or isinstance(node, ast.BoolOp) or isinstance(node, ast.ExceptHandler) or isinstance(node, ast.With) or isinstance(node, ast.Assert) or isinstance(node, ast.comprehension): 
-                node_complexity += 1
+        if isinstance(node, ast.If) or isinstance(node, ast.For) or isinstance(node, ast.While) or isinstance(node, ast.BoolOp) or isinstance(node, ast.ExceptHandler) or isinstance(node, ast.With) or isinstance(node, ast.Assert) or isinstance(node, ast.comprehension):
+            node_complexity += 1
         for child_node in ast.iter_child_nodes(node):
             node_complexity += self.calculate_node_complexity(child_node)
-        
+
         return node_complexity
 
 
@@ -156,15 +165,15 @@ class Analyzer(ast.NodeVisitor):
         decorator_names_list = []
         for decorator in node.decorator_list:
             if isinstance(decorator, ast.Attribute):
-                decorator_names_list.append(decorator.value.id + "." + decorator.attr)
-            else:
+                decorator_names_list.append(parse_attribute(decorator))
+            elif hasattr(decorator, 'id'):
                 decorator_names_list.append(decorator.id)
 
         args_list = []
         for arg in node.args.args:
             if isinstance(arg.annotation, ast.Attribute):
                 args_list.append(Argument(arg.arg, parse_attribute(arg.annotation)).__dict__)
-            if isinstance(arg.annotation, ast.Name):
+            elif isinstance(arg.annotation, ast.Name):
                 args_list.append(Argument(arg.arg, arg.annotation.id).__dict__)
 
         if type(node) != ast.Module:
@@ -191,20 +200,18 @@ class Analyzer(ast.NodeVisitor):
             node_parent = node.parent
             while (type(node_parent) != ast.FunctionDef) and (type(node_parent) != ast.Module):
                 node_parent = node_parent.parent
-            if type(node_parent) == ast.FunctionDef:
+
+            if type(node_parent) != ast.FunctionDef:
+                return
+            if type(node_parent.parent) == ast.ClassDef:
+                node_parent.inner_calls.add(func_name)
+                calls_list[node_parent.parent.name + '.' + node_parent.name] = node_parent.inner_calls
+            else:
                 node_parent.inner_calls.add(func_name)
                 calls_list[node_parent.name] = node_parent.inner_calls
 
         self.generic_visit(node)
 
-
-def parse_attribute(attribute: ast.Attribute):
-    if isinstance(attribute.value, ast.Name):
-        return attribute.value.id + "." + attribute.attr
-    elif isinstance(attribute.value, ast.Attribute):
-        return parse_attribute(attribute.value) + "." + attribute.attr
-    else:
-        return "error_parsing_in_Attr_node"
 
 
 def count_lines(code, start_line, end_line):
@@ -302,7 +309,7 @@ def main():
                 for key in calls_list:
                     for iclass in classes_list:
                         for method in iclass.methods:
-                            if method.name == key:
+                            if iclass.name + '.' + method.name == key:
                                 method.sub_calls = list(calls_list[key])
                     for method in methods_list:
                         if method.name == key:

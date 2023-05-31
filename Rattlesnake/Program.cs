@@ -24,7 +24,7 @@ namespace Rattlesnake
                 // can only reference classes already defined when assigning, so this should work
                 foreach (var obja in cls.ObjectAssignments)
                 {
-                    var matchedClassConstructor = superclassNamesMap.Keys.First(x => x.Name.Equals(obja.ClassName));
+                    var matchedClassConstructor = superclassNamesMap.Keys.FirstOrDefault(x => x.Name.Equals(obja.ClassName), null);
                     if (matchedClassConstructor != null)
                     {
                         ObjectAssignmentModel assignment = new ObjectAssignmentModel
@@ -115,11 +115,42 @@ namespace Rattlesnake
             {
                 var linkedClass = classes.Find(x => x.Name.Equals(cls.Name));
                 if (linkedClass == null) continue;
+                
+                // add default __init__ method if none is defined
+                if (cls.MethodsList.Find(x => x.Name.Equals("__init__")) == null)
+                {
+                    // see if we can infer the init method definition from a base class
+                    if (linkedClass.SuperClassesList.Count != 0)
+                    {
+                        if (linkedClass.SuperClassesList[0].Name.Equals(cls.SuperClassesList[0]))
+                        {
+                            var baseClass = classes.Find(x => x.Name == cls.SuperClassesList[0]);
+                            linkedClass.MethodsList.Add(baseClass.MethodsList.Find(x => x.Name == "__init__"));
+                        }
+                    }
+                    
+                    // if no definition, set the stats for the default init method
+                    else
+                    {
+                        MethodModel initMethod = new MethodModel();
+                        initMethod.Name = "__init__";
+                        initMethod.TotalNumberOfSubCalls = 0;
+                        initMethod.RelativePath = relativePath;
+                        initMethod.CyclomaticComplexity = 1;
+                        initMethod.Lines = new LinesOfCode();
+                        initMethod.Parent = cls.Name;
+                        initMethod.DecoratorsList = new List<string>();
+                        initMethod.ArgumentsList = new List<ArgumentModel>();
+                        linkedClass.MethodsList.Add(initMethod);
+                    }
+                }
+                
                 // map class methods
                 foreach (var mth in cls.MethodsList)
                 {
                     MethodModel currentMethod = new MethodModel();
                     currentMethod.Name = mth.Name;
+                    mth.SubCallsList.RemoveAll(x => x == "error_parsing_in_Attr_node");
                     currentMethod.TotalNumberOfSubCalls = mth.SubCallsList.Count;
                     currentMethod.RelativePath = relativePath;
                     currentMethod.CyclomaticComplexity = mth.CyclomaticComplexity;
@@ -141,9 +172,18 @@ namespace Rattlesnake
                         currentMethod.ArgumentsList.Add(mappedArg);
                     }
                     
-                    // map global method subcalls
+                    // map method subcalls
                     foreach (var subcall in mth.SubCallsList)
                     {
+                        // check if call is to a class' init method
+                        var potentialClassNameMatch = classes.Find(x => x.Name.Equals(subcall));
+                        if (potentialClassNameMatch != null)
+                        {
+                            currentMethod.LocalSubCallsList.Add(potentialClassNameMatch.MethodsList.Find(x => x.Name == "__init__"));
+                            continue;
+                        }
+                        
+                        // check file methods
                         var fileMethod = fileMethods.Find(x => x.Name.Equals(subcall));
                         if (fileMethod != null)
                         {
@@ -172,17 +212,33 @@ namespace Rattlesnake
                                 }
                             }
                             
-                            // check if method call uses a parameter
+                            // check if method call uses a parameter or is a static call
                             else if (Regex.IsMatch(subcall, @".*\..*"))
                             {
                                 var argument = currentMethod.ArgumentsList.Find(x =>
-                                    x.Name.Equals(Regex.Split(subcall, @".*\..*")[0]));
+                                    x.Name.Equals(Regex.Split(subcall, @"\.")[0]));
                                 if (argument != null)
                                 {
                                     if (argument.GetType() == typeof(ClassModel))
                                     {
                                         var methodInstance = ((ClassModel)argument.Annotation).MethodsList.Find(x =>
-                                            x.Name.Equals(Regex.Split(subcall, @".*\..*")[1]));
+                                            x.Name.Equals(Regex.Split(subcall, @"\.")[1]));
+                                        if (methodInstance != null)
+                                        {
+                                            currentMethod.LocalSubCallsList.Add(methodInstance);
+                                        }
+                                    }
+                                }
+
+                                else
+                                {
+                                    var classInstance = classes.Find(x =>
+                                        x.Name.Equals(Regex.Split(subcall, @"\.")[0]));
+                                    
+                                    if (classInstance != null)
+                                    {
+                                        var methodInstance = classInstance.MethodsList.Find(x =>
+                                            x.Name.Equals(Regex.Split(subcall, @"\.")[1]));
                                         if (methodInstance != null)
                                         {
                                             currentMethod.LocalSubCallsList.Add(methodInstance);
@@ -204,10 +260,18 @@ namespace Rattlesnake
             {
                 var currentMethod = currentFileMethods.Find(x => x.Name.Equals(mth.Name));
                 if (currentMethod == null) continue;
-                
+
                 foreach (var subcall in mth.SubCallsList)
                 {
-                    // check if method call uses a parameter
+                    // check if call is to a class' init method
+                    var potentialClassNameMatch = fileClasses.Find(x => x.Name.Equals(subcall));
+                    if (potentialClassNameMatch != null)
+                    {
+                        currentMethod.LocalSubCallsList.Add(potentialClassNameMatch.MethodsList.Find(x => x.Name == "__init__"));
+                        continue;
+                    }
+                    
+                    // check if method call uses a parameter or is a static call
                     if (Regex.IsMatch(subcall, @".*\..*"))
                     {
                         var callString = Regex.Split(subcall, @"\.");
@@ -218,6 +282,22 @@ namespace Rattlesnake
                             if (argument.Annotation.GetType() == typeof(ClassModel))
                             {
                                 var methodInstance = ((ClassModel)argument.Annotation).MethodsList.Find(x =>
+                                    x.Name.Equals(Regex.Split(subcall, @"\.")[1]));
+                                if (methodInstance != null)
+                                {
+                                    currentMethod.LocalSubCallsList.Add(methodInstance);
+                                }
+                            }
+                        }
+                        
+                        else
+                        {
+                            var classInstance = fileClasses.Find(x =>
+                                x.Name.Equals(Regex.Split(subcall, @"\.")[0]));
+                                    
+                            if (classInstance != null)
+                            {
+                                var methodInstance = classInstance.MethodsList.Find(x =>
                                     x.Name.Equals(Regex.Split(subcall, @"\.")[1]));
                                 if (methodInstance != null)
                                 {
@@ -386,8 +466,9 @@ namespace Rattlesnake
                         foreach (var method in file.MethodsList)
                         {
                             var parent = method.Parent != "*" ? method.Parent : "N/A";
+                            var fullMethodName = method.RelativePath.Replace("/", ".").Replace(".py", ".") + method.Name;
                             csvContentMethodStats +=
-                                $"{method.Name}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}\n";
+                                $"{fullMethodName}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}\n";
                         }
 
                         // build class method stats CSV content
@@ -396,13 +477,14 @@ namespace Rattlesnake
                             foreach (var method in cls.MethodsList)
                             {
                                 var parent = method.Parent != "*" ? method.Parent : "N/A";
+                                var fullMethodName = method.RelativePath.Replace("/", ".").Replace(".py", ".") + $"{parent}." + method.Name;
                                 csvContentMethodStats +=
-                                    $"{method.Name}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}\n";
+                                    $"{fullMethodName}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}\n";
                             }
                         }
                         
                         // build file links CSV content
-                        csvContentFileLinks += $"{file.Name}, {file.Lines.LinesTotal}, {file.Lines.LinesCoded}, {file.Lines.LinesCommented}, {file.Lines.linesDocs}, {file.Lines.LinesEmpty}, {internalDepsPathList}, {externalDepsPathList}\n";
+                        csvContentFileLinks += $"{file.RelativePath}, {file.Lines.LinesTotal}, {file.Lines.LinesCoded}, {file.Lines.LinesCommented}, {file.Lines.linesDocs}, {file.Lines.LinesEmpty}, {internalDepsPathList}, {externalDepsPathList}\n";
                     }
                 }
                 
