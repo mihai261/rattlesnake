@@ -11,7 +11,7 @@ public class ClassModel
     public LinesOfCode Lines { get; set; }
     
     [JsonPropertyName("methods")]
-    public List<MethodModel> MethodsList { get; set; }
+    public HashSet<MethodModel> MethodsList { get; set; }
     
     
     [JsonPropertyName("object_assignments")]
@@ -22,7 +22,7 @@ public class ClassModel
 
     public ClassModel()
     {
-        MethodsList = new List<MethodModel>();
+        MethodsList = new HashSet<MethodModel>();
         SuperClassesList = new List<ClassModel>();
         ObjectAssignments = new List<ObjectAssignmentModel>();
     }

@@ -74,6 +74,7 @@ class Class:
         self.lines = lines
         self.methods = []
         self.object_assignments = object_assignments
+        self.super_classes = []
 
     @classmethod
     def with_superclass(self, name, lines, object_assignments, super_classes):

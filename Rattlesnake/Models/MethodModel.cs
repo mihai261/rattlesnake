@@ -8,6 +8,8 @@ public class MethodModel
     [JsonPropertyName("name")]
     public String Name { get; set; }
     
+    public bool IsDefault { get; set; }
+    
     public int TotalNumberOfSubCalls { get; set; }
     public String RelativePath { get; set; }
     
@@ -34,6 +36,7 @@ public class MethodModel
 
     public MethodModel()
     {
+        IsDefault = false;
         ArgumentsList = new List<ArgumentModel>();
         DecoratorsList = new List<string>();
         LocalSubCallsList = new List<MethodModel>();

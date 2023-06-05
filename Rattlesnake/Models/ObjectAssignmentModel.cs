@@ -8,5 +8,5 @@ public class ObjectAssignmentModel
     public String VariableName { get; set; }
     
     [JsonPropertyName("assigned_class")]
-    public ClassModel ClassName { get; set; }
+    public ClassModel Type { get; set; }
 }
