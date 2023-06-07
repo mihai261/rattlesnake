@@ -134,7 +134,6 @@ namespace Rattlesnake
                     Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(mth.Lines)),
                     Parent = mth.Parent,
                     DecoratorsList = mth.DecoratorsList,
-                    ArgumentsList = new List<ArgumentModel>()
                 };
 
                 // map arguments
@@ -175,8 +174,7 @@ namespace Rattlesnake
                 // clear mapped subcalls from raw object to speed up next mapping attempt
                 mth.SubCallsList.RemoveAll(x => mappedSubcalls.Contains(x));
             }
-            
-            // TODO: map file method subcalls to method from imports lists
+
             return fileMethods;
         }
 
@@ -216,8 +214,6 @@ namespace Rattlesnake
                         initMethod.CyclomaticComplexity = 1;
                         initMethod.Lines = new LinesOfCode();
                         initMethod.Parent = cls.Name;
-                        initMethod.DecoratorsList = new List<string>();
-                        initMethod.ArgumentsList = new List<ArgumentModel>();
                         linkedClass.MethodsList.Add(initMethod);
                     }
                 }
@@ -234,7 +230,6 @@ namespace Rattlesnake
                     currentMethod.Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(mth.Lines));
                     currentMethod.Parent = mth.Parent;
                     currentMethod.DecoratorsList = mth.DecoratorsList;
-                    currentMethod.ArgumentsList = new List<ArgumentModel>();
             
                     // map arguments
                     foreach (var methodArg in mth.ArgumentsList)
@@ -371,7 +366,7 @@ namespace Rattlesnake
             }
         }
 
-        private static void UpdateFileMethodsSubcallsList(RawFileModel rawFile, List<ClassModel> mappedClasses, List<MethodModel> fileMethods)
+        private static void UpdateFileMethodsSubcallsListWithLocalCalls(RawFileModel rawFile, List<ClassModel> mappedClasses, List<MethodModel> fileMethods)
         {
             foreach (var rawFileMethod in rawFile.MethodsList)
             {
@@ -435,21 +430,324 @@ namespace Rattlesnake
             }
         }
 
-        private static ProjectComponent? FindInternalDependency(String importString, List<FolderModel> projectFolders)
+        private static void UpdateFileMethodsSubcallsListWithInternalCalls(List<MethodModel> fileMethods,
+            List<RawFolderModel> rawFolders, List<InternalDependency> internalDependencies, List<ClassModel> importedClasses)
+        {
+            foreach (var dir in rawFolders)
+            {
+                foreach (var rawFile in dir.FilesList)
+                {
+                    foreach (var rawMethod in rawFile.MethodsList)
+                    {
+                        var mappedMethod = fileMethods.Find(x => x.Name == rawMethod.Name);
+                        if (mappedMethod == null) continue;
+
+                        foreach (var subcall in rawMethod.SubCallsList)
+                        {
+                            // see if call is to an (directly) imported class' init method
+                            var matchingImportedClassInstance =
+                                importedClasses.Find(x => x.Name.Equals(subcall));
+                            if (matchingImportedClassInstance != null)
+                            {
+                                mappedMethod.InternalSubCallsList.Add(
+                                    matchingImportedClassInstance.MethodsList.FirstOrDefault(
+                                        x => x.Name == "__init__",
+                                        null));
+                            }
+                            
+                            
+                            
+                            if (Regex.IsMatch(subcall, @".*\..*"))
+                            {
+                                var moduleName = Regex.Split(subcall, @"\.")[0];
+
+                                // see if import of matching internal module exists 
+                                var dependency = internalDependencies.Find(x => x.Name == moduleName);
+                                if (dependency != null)
+                                {
+                                    if (dependency.Source.GetType() == typeof(FileModel))
+                                    {
+                                        var fileDependency = (FileModel)dependency.Source;
+
+                                        // check file methods list
+                                        var subcallInstance = fileDependency.MethodsList.Find(x =>
+                                            x.Name == Regex.Split(subcall, @"\.")[1]);
+                                        if (subcallInstance != null)
+                                        {
+                                            mappedMethod.InternalSubCallsList.Add(subcallInstance);
+                                            continue;
+                                        }
+
+                                        // check if it's a call to init method of a class
+                                        var matchingClassInstance =
+                                            fileDependency.ClassesList.Find(x => x.Name.Equals(subcall));
+                                        if (matchingClassInstance != null)
+                                        {
+                                            mappedMethod.InternalSubCallsList.Add(
+                                                matchingClassInstance.MethodsList.FirstOrDefault(
+                                                    x => x.Name == "__init__",
+                                                    null));
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    // if dependency is like from module1.module2 import module3, then split it by tokens
+                                    dependency = internalDependencies.Find(x =>
+                                        Regex.Split(x.Name, @"\.").Last() == moduleName);
+                                    if (dependency != null)
+                                    {
+                                        if (dependency.Source.GetType() == typeof(FileModel))
+                                        {
+                                            var fileDependency = (FileModel)dependency.Source;
+                                            var subcallInstance = fileDependency.MethodsList.Find(x =>
+                                                x.Name == Regex.Split(subcall, @"\.")[1]);
+                                            if (subcallInstance != null)
+                                            {
+                                                mappedMethod.InternalSubCallsList.Add(subcallInstance);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void UpdateFileMethodsSubcallsListWithExternalCalls(List<MethodModel> fileMethods, 
+            List<RawFolderModel> rawFolders, List<ExternalDependency> externalDependencies, List<ExternalNamedEntity> importedNames)
+        {
+            foreach (var dir in rawFolders)
+            {
+                foreach (var rawFile in dir.FilesList)
+                {
+                    foreach (var rawMethod in rawFile.MethodsList)
+                    {
+                        var mappedMethod = fileMethods.Find(x => x.Name == rawMethod.Name);
+                        if (mappedMethod == null) continue;
+
+                        foreach (var subcall in rawMethod.SubCallsList)
+                        {
+                            // see if call is to a directly imported name (e.g. could be method or class init function)
+                            var matchingImportedClassName =
+                                importedNames.Find(x => x.Name == subcall);
+                            if (matchingImportedClassName != null)
+                            {
+                                mappedMethod.ExternalSubCallsList.Add(
+                                    new ExternalMethodModel()
+                                    {
+                                        Name = matchingImportedClassName.Name,
+                                        Provider = matchingImportedClassName.Provider
+                                    });
+                            }
+
+
+
+                            if (Regex.IsMatch(subcall, @".*\..*"))
+                            {
+                                var moduleName = Regex.Split(subcall, @"\.")[0];
+
+                                // see if import of matching internal module exists 
+                                var dependency = externalDependencies.Find(x => x.Name == moduleName);
+                                if (dependency != null)
+                                {
+                                    mappedMethod.ExternalSubCallsList.Add(
+                                        new ExternalMethodModel()
+                                        {
+                                            Name = Regex.Split(subcall, @"\.")[1],
+                                            Provider = dependency
+                                        });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void UpdateClassMethodsSubcallsWithInternalCalls(List<ClassModel> mappedClasses,
+            List<RawFolderModel> rawFolders, List<InternalDependency> internalDependencies, List<ClassModel> importedClasses)
+        {
+            foreach (var dir in rawFolders)
+            {
+                foreach (var rawFile in dir.FilesList)
+                {
+                    foreach (var rawClass in rawFile.ClassesList)
+                    {
+                        var mappedClassInstance = mappedClasses.Find(x => rawClass.Name == x.Name);
+                        if (mappedClassInstance == null) continue;
+
+                        foreach (var rawMethod in rawClass.MethodsList)
+                        {
+                            var mappedMethod = mappedClassInstance.MethodsList.FirstOrDefault(x => x.Name == rawMethod.Name, null);
+                            if (mappedMethod == null) continue;
+
+                            foreach (var subcall in rawMethod.SubCallsList)
+                            {
+                                // see if call is to an (directly) imported class' init method
+                                var matchingImportedClassInstance =
+                                    importedClasses.Find(x => x.Name.Equals(subcall));
+                                if (matchingImportedClassInstance != null)
+                                {
+                                    mappedMethod.InternalSubCallsList.Add(
+                                        matchingImportedClassInstance.MethodsList.FirstOrDefault(
+                                            x => x.Name == "__init__",
+                                            null));
+                                }
+
+
+
+                                if (Regex.IsMatch(subcall, @".*\..*"))
+                                {
+                                    var moduleName = Regex.Split(subcall, @"\.")[0];
+
+                                    // see if import of matching internal module exists 
+                                    var dependency = internalDependencies.Find(x => x.Name == moduleName);
+                                    if (dependency != null)
+                                    {
+                                        if (dependency.Source.GetType() == typeof(FileModel))
+                                        {
+                                            var fileDependency = (FileModel)dependency.Source;
+
+                                            // check file methods list
+                                            var subcallInstance = fileDependency.MethodsList.Find(x =>
+                                                x.Name == Regex.Split(subcall, @"\.")[1]);
+                                            if (subcallInstance != null)
+                                            {
+                                                mappedMethod.InternalSubCallsList.Add(subcallInstance);
+                                                continue;
+                                            }
+
+                                            // check if it's a call to init method of a class
+                                            var matchingClassInstance =
+                                                fileDependency.ClassesList.Find(x => x.Name.Equals(subcall));
+                                            if (matchingClassInstance != null)
+                                            {
+                                                mappedMethod.InternalSubCallsList.Add(
+                                                    matchingClassInstance.MethodsList.FirstOrDefault(
+                                                        x => x.Name == "__init__",
+                                                        null));
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // if dependency is like from module1.module2 import module3, then split it by tokens
+                                        dependency = internalDependencies.Find(x =>
+                                            Regex.Split(x.Name, @"\.").Last() == moduleName);
+                                        if (dependency != null)
+                                        {
+                                            if (dependency.Source.GetType() == typeof(FileModel))
+                                            {
+                                                var fileDependency = (FileModel)dependency.Source;
+                                                var subcallInstance = fileDependency.MethodsList.Find(x =>
+                                                    x.Name == Regex.Split(subcall, @"\.")[1]);
+                                                if (subcallInstance != null)
+                                                {
+                                                    mappedMethod.InternalSubCallsList.Add(subcallInstance);
+                                                    continue;
+                                                }
+                                                
+                                                // check if it's a call to init method of a class
+                                                var matchingClassInstance =
+                                                    fileDependency.ClassesList.Find(x => x.Name.Equals(Regex.Split(subcall, @"\.")[1]));
+                                                if (matchingClassInstance != null)
+                                                {
+                                                    mappedMethod.InternalSubCallsList.Add(
+                                                        matchingClassInstance.MethodsList.FirstOrDefault(
+                                                            x => x.Name == "__init__",
+                                                            null));
+                                                }
+                                                
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void UpdateClassMethodsSubcallsWithExternalCalls(List<ClassModel> mappedClasses,
+            List<RawFolderModel> rawFolders, List<ExternalDependency> externalDependencies,
+            List<ExternalNamedEntity> importedNames)
+        {
+            foreach (var dir in rawFolders)
+            {
+                foreach (var rawFile in dir.FilesList)
+                {
+                    foreach (var rawClass in rawFile.ClassesList)
+                    {
+                        var mappedClassInstance = mappedClasses.Find(x => rawClass.Name == x.Name);
+                        if (mappedClassInstance == null) continue;
+
+                        foreach (var rawMethod in rawClass.MethodsList)
+                        {
+                            var mappedMethod =
+                                mappedClassInstance.MethodsList.FirstOrDefault(x => x.Name == rawMethod.Name, null);
+                            if (mappedMethod == null) continue;
+
+                            foreach (var subcall in rawMethod.SubCallsList)
+                            {
+                                // see if call is to a directly imported name (e.g. could be method or class init function)
+                                var matchingImportedClassName =
+                                    importedNames.Find(x => x.Name == subcall);
+                                if (matchingImportedClassName != null)
+                                {
+                                    mappedMethod.ExternalSubCallsList.Add(
+                                        new ExternalMethodModel()
+                                        {
+                                            Name = matchingImportedClassName.Name,
+                                            Provider = matchingImportedClassName.Provider
+                                        });
+                                }
+
+
+
+                                if (Regex.IsMatch(subcall, @".*\..*"))
+                                {
+                                    var moduleName = Regex.Split(subcall, @"\.")[0];
+
+                                    // see if import of matching internal module exists 
+                                    var dependency = externalDependencies.Find(x => x.Name == moduleName);
+                                    if (dependency != null)
+                                    {
+                                        mappedMethod.ExternalSubCallsList.Add(
+                                            new ExternalMethodModel()
+                                            {
+                                                Name = Regex.Split(subcall, @"\.")[1],
+                                                Provider = dependency
+                                            });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+
+        private static (ProjectComponent?, ClassModel?) FindInternalDependency(String importString, List<FolderModel> projectFolders)
         {
             // see if import is an entire internal package
             var package = projectFolders.Find(x => x.PackageName == importString);
             if (package != null)
             {
-                return package;
+                return (package, null);
             }
             
             
             // see if import is a file from an internal package
             if (!importString.Contains("."))
             {
-                return null;
+                return (null, null);
             }
+            var importedEntityName = importString.Substring(importString.LastIndexOf(".") + 1);
             var containingPackageName = importString.Substring(0, importString.LastIndexOf("."));
             package = projectFolders.Find(x => x.PackageName == containingPackageName);
             if (package != null)
@@ -457,27 +755,33 @@ namespace Rattlesnake
                 var importedFile = package.FilesList.Find(x => x.Name == importString.Substring(importString.LastIndexOf(".")+1) + ".py");
                 if (importedFile != null)
                 {
-                    return importedFile;
+                    return (importedFile, null);
                 }
             }
             
             // maybe import a class/function/constant from a module
             if (!containingPackageName.Contains("."))
             {
-                return null;
+                return (null, null);
             }
+            
+            var importedFileName = containingPackageName.Substring(containingPackageName.LastIndexOf(".") + 1);
             containingPackageName = containingPackageName.Substring(0, containingPackageName.LastIndexOf("."));
             package = projectFolders.Find(x => x.PackageName == containingPackageName);
             if (package != null)
             {
-                var importedFile = package.FilesList.Find(x => x.Name == containingPackageName.Substring(containingPackageName.LastIndexOf(".")+1) + ".py");
+                var importedFile = package.FilesList.Find(x => x.Name == importedFileName + ".py");
                 if (importedFile != null)
                 {
-                    return importedFile;
+                    // see if it imports whole class
+                    var importedClassInstance = importedFile.ClassesList.Find(x => x.Name == importedEntityName);
+
+                    // if no class found, it will return null regardless (so it works like the other cases)
+                    return (importedFile, importedClassInstance);
                 }
             }
 
-            return null;
+            return (null, null);
         }
         
         static void Main(string[] args)
@@ -490,14 +794,12 @@ namespace Rattlesnake
 
                 ProjectModel project = new ProjectModel();
                 project.Name = rawProject.Name;
-                project.FoldersList = new List<FolderModel>();
 
                 foreach (var rawFolder in rawProject.FoldersList)
                 {
                     FolderModel folder = new FolderModel();
                     folder.RelativePath = rawFolder.RelativePath + "/";
                     folder.DirectoryName = rawFolder.DirectoryName;
-                    folder.FilesList = new List<FileModel>();
 
                     if (rawFolder.FilesList.Find(x => x.Name == "__init__.py") != null)
                     {
@@ -517,14 +819,13 @@ namespace Rattlesnake
                         file.Name = rawFile.Name;
                         file.RelativePath = folder.RelativePath + file.Name;
 
+                        // map classes&methods and their local dependencies 
                         List<ClassModel> classes = MapClasses(rawFile);
                         List<MethodModel> fileMethods = MapFileMethods(rawFile, file.RelativePath, classes);
                         MapClassMethods(rawFile, file.RelativePath, classes, fileMethods);
-                        UpdateFileMethodsSubcallsList(rawFile, classes, fileMethods);
+                        UpdateFileMethodsSubcallsListWithLocalCalls(rawFile, classes, fileMethods);
 
                         file.ImportsList = rawFile.ImportsList;
-                        file.externalDependencies = new List<ExternalDependency>();
-                        file.internalDependencies = new List<InternalDependency>();
                         file.Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(rawFile.Lines));
                         file.MethodsList = fileMethods;
                         file.ClassesList = classes;
@@ -545,32 +846,49 @@ namespace Rattlesnake
                 
                 // create method statistics results CSV
                 var methodStatsStream = File.Create($"{projectDirectory}/results/method_stats.csv");
-                var csvContentMethodStats = "Method Name, Relative Path, Parent Class, Cyclomatic Complexity, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Total No. Of Subcalls, No. Of Local Subcalls\n";
+                var csvContentMethodStats = "Method Name, Relative Path, Parent Class, Cyclomatic Complexity, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Total No. Of Subcalls, No. Of Local Subcalls, No. Of Internal Subcalls, No. Of External Subcalls\n";
                 
-                // map file dependencies
+                // map non-local dependencies
                 foreach (var dir in project.FoldersList)
                 {
                     foreach (var file in dir.FilesList)
                     {
                         var internalDepsPathList = "";
                         var externalDepsPathList = "";
+                        // map imports 
                         foreach (var import in file.ImportsList)
                         {
                             // check if it's external or internal
-                            var linkedImport = FindInternalDependency(import, project.FoldersList);
+                            var (linkedImport, linkedClass) = FindInternalDependency(import, project.FoldersList);
                             if (linkedImport != null)
                             {
                                 var dependency = new InternalDependency();
                                 dependency.Name = import;
                                 dependency.Source = linkedImport;
-                                file.internalDependencies.Add(dependency);
+                                file.InternalDependencies.Add(dependency);
                                 internalDepsPathList += (dependency.Source.RelativePath + " | ");
+
+                                if (linkedClass != null)
+                                {
+                                    file.ImportedClassesList.Add(linkedClass);
+                                }
                             }
                             else
                             {
                                 var depedency = new ExternalDependency();
                                 depedency.Name = import;
-                                file.externalDependencies.Add(depedency);
+                                file.ExternalDependencies.Add(depedency);
+
+                                if (Regex.IsMatch(import, @".*.\.*"))
+                                {
+                                    var importedName = import.Substring(import.LastIndexOf(".") + 1);
+                                    file.ImportedExternalNames.Add(new ExternalNamedEntity()
+                                    {
+                                        Name = importedName,
+                                        Provider = depedency
+                                    });
+                                }
+                                
                                 externalDepsPathList += (depedency.Name + " | ");
                             }
                         }
@@ -587,7 +905,18 @@ namespace Rattlesnake
 
                         }
 
-                        MapInternalClassBases(file.ClassesList, file.internalDependencies, rawProject.FoldersList);
+                        // update bases list with class instances from other internal modules
+                        MapInternalClassBases(file.ClassesList, file.InternalDependencies, rawProject.FoldersList);
+                        
+                        // update file method subcalls to include references to methods from other internal modules
+                        UpdateFileMethodsSubcallsListWithInternalCalls(file.MethodsList, rawProject.FoldersList, file.InternalDependencies, file.ImportedClassesList);
+                        
+                        // update file method subcalls to include references to external names
+                        UpdateFileMethodsSubcallsListWithExternalCalls(file.MethodsList, rawProject.FoldersList, file.ExternalDependencies, file.ImportedExternalNames);
+                        
+                        // update class methods subcalls for each class in the current file
+                        UpdateClassMethodsSubcallsWithInternalCalls(file.ClassesList, rawProject.FoldersList, file.InternalDependencies, file.ImportedClassesList);
+                        UpdateClassMethodsSubcallsWithExternalCalls(file.ClassesList, rawProject.FoldersList, file.ExternalDependencies, file.ImportedExternalNames);
                         
                         // build file method stats CSV content
                         foreach (var method in file.MethodsList)
@@ -595,7 +924,7 @@ namespace Rattlesnake
                             var parent = method.Parent != "*" ? method.Parent : "N/A";
                             var fullMethodName = method.RelativePath.Replace("/", ".").Replace(".py", ".") + method.Name;
                             csvContentMethodStats +=
-                                $"{fullMethodName}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}\n";
+                                $"{fullMethodName}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count}, {method.ExternalSubCallsList.Count}\n";
                         }
 
                         // build class method stats CSV content
@@ -606,7 +935,7 @@ namespace Rattlesnake
                                 var parent = method.Parent != "*" ? method.Parent : "N/A";
                                 var fullMethodName = method.RelativePath.Replace("/", ".").Replace(".py", ".") + $"{parent}." + method.Name;
                                 csvContentMethodStats +=
-                                    $"{fullMethodName}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}\n";
+                                    $"{fullMethodName}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count},  {method.ExternalSubCallsList.Count}\n";
                             }
                         }
                         
@@ -626,9 +955,6 @@ namespace Rattlesnake
                 {
                     writer.Write(csvContentMethodStats);
                 }
-                
-                // map internal module subcalls
-                
             }
             else
             {

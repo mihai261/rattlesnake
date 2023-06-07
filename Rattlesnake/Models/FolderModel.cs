@@ -13,4 +13,9 @@ public class FolderModel : ProjectComponent
     
     [JsonPropertyName("files")]
     public List<FileModel> FilesList { get; set; }
+
+    public FolderModel()
+    {
+        FilesList = new List<FileModel>();
+    }
 }

@@ -9,4 +9,9 @@ public class ProjectModel
     
     [JsonPropertyName("folders")]
     public List<FolderModel> FoldersList { get; set; }
+
+    public ProjectModel()
+    {
+        FoldersList = new List<FolderModel>();
+    }
 }
