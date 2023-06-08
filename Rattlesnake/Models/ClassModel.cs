@@ -10,6 +10,8 @@ public class ClassModel
     [JsonPropertyName("lines")]
     public LinesOfCode Lines { get; set; }
     
+    public String RelativePath { get; set; }
+
     [JsonPropertyName("methods")]
     public HashSet<MethodModel> MethodsList { get; set; }
     
@@ -18,12 +20,14 @@ public class ClassModel
     public List<ObjectAssignmentModel> ObjectAssignments { get; set; }
     
     [JsonIgnore]
-    public List<ClassModel> SuperClassesList { get; set; }
+    public List<ClassModel> LocalSuperClassesList { get; set; }
+    public List<ClassModel> InternalSuperClassesList { get; set; }
 
     public ClassModel()
     {
         MethodsList = new HashSet<MethodModel>();
-        SuperClassesList = new List<ClassModel>();
+        LocalSuperClassesList = new List<ClassModel>();
+        InternalSuperClassesList = new List<ClassModel>();
         ObjectAssignments = new List<ObjectAssignmentModel>();
     }
 }

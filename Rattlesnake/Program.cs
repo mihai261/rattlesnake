@@ -7,7 +7,7 @@ namespace Rattlesnake
 {
     class Converter {
 
-        private static List<ClassModel> MapClasses(RawFileModel rawFile) 
+        private static List<ClassModel> MapClasses(RawFileModel rawFile, String relativePath) 
         {
             var baseClassesNamesMap = new Dictionary <ClassModel, List<string>> ();
             var linkedClasses = new List<ClassModel>();
@@ -17,6 +17,7 @@ namespace Rattlesnake
             {
                 ClassModel currentClass = new ClassModel();
                 currentClass.Name = cls.Name;
+                currentClass.RelativePath = relativePath;
                 currentClass.Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(cls.Lines));
                 baseClassesNamesMap.Add(currentClass,
                     cls.SuperClassesList != null ? new List<String>(cls.SuperClassesList) : new List<string>());
@@ -48,9 +49,9 @@ namespace Rattlesnake
                         if (key.Name.Equals(baseClassName))
                         {
                             // // remove mapped base class from raw list to speed up the next mapping process
-                            // rawFile.ClassesList.Find(x => x.Name == currentClass.Name).SuperClassesList
+                            // rawFile.ClassesList.Find(x => x.Name == currentClass.Name).LocalSuperClassesList
                             //     .Remove(baseClassName);
-                            currentClass.SuperClassesList.Add(key);
+                            currentClass.LocalSuperClassesList.Add(key);
                         }
                     }
                 }
@@ -89,7 +90,7 @@ namespace Rattlesnake
                                             x.Name == Regex.Split(baseClassName, @"\.")[1]);
                                         if (baseClassInstance != null)
                                         {
-                                            mappedClassInstance.SuperClassesList.Add(baseClassInstance);
+                                            mappedClassInstance.InternalSuperClassesList.Add(baseClassInstance);
                                         }
                                     }
                                 }
@@ -106,7 +107,7 @@ namespace Rattlesnake
                                                 x.Name == Regex.Split(baseClassName, @"\.")[1]);
                                             if (baseClassInstance != null)
                                             {
-                                                mappedClassInstance.SuperClassesList.Add(baseClassInstance);
+                                                mappedClassInstance.InternalSuperClassesList.Add(baseClassInstance);
                                             }
                                         }
                                     }
@@ -189,10 +190,10 @@ namespace Rattlesnake
                 if (cls.MethodsList.Find(x => x.Name.Equals("__init__")) == null)
                 {
                     // see if we can infer the init method definition from a base class
-                    if (linkedClass.SuperClassesList.Count != 0)
+                    if (linkedClass.LocalSuperClassesList.Count != 0)
                     {
                         // check that the first mapped base class is the same as the first raw subclass
-                        if (linkedClass.SuperClassesList[0].Name.Equals(cls.SuperClassesList[0]))
+                        if (linkedClass.LocalSuperClassesList[0].Name.Equals(cls.SuperClassesList[0]))
                         {
                             var baseClass = mappedClasses.Find(x => x.Name == cls.SuperClassesList[0]);
                             if (baseClass != null)
@@ -820,7 +821,7 @@ namespace Rattlesnake
                         file.RelativePath = folder.RelativePath + file.Name;
 
                         // map classes&methods and their local dependencies 
-                        List<ClassModel> classes = MapClasses(rawFile);
+                        List<ClassModel> classes = MapClasses(rawFile, file.RelativePath);
                         List<MethodModel> fileMethods = MapFileMethods(rawFile, file.RelativePath, classes);
                         MapClassMethods(rawFile, file.RelativePath, classes, fileMethods);
                         UpdateFileMethodsSubcallsListWithLocalCalls(rawFile, classes, fileMethods);
@@ -848,6 +849,10 @@ namespace Rattlesnake
                 var methodStatsStream = File.Create($"{projectDirectory}/results/method_stats.csv");
                 var csvContentMethodStats = "Method Name, Relative Path, Parent Class, Cyclomatic Complexity, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Total No. Of Subcalls, No. Of Local Subcalls, No. Of Internal Subcalls, No. Of External Subcalls\n";
                 
+                // create class statistics results CSV
+                var classStatsStream = File.Create($"{projectDirectory}/results/class_stats.csv");
+                var csvContentClassStats = "Class Name, Relative Path, Total Cyclomatic Complexity, Local Bases, Internal Bases, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines\n";
+
                 // map non-local dependencies
                 foreach (var dir in project.FoldersList)
                 {
@@ -917,6 +922,43 @@ namespace Rattlesnake
                         // update class methods subcalls for each class in the current file
                         UpdateClassMethodsSubcallsWithInternalCalls(file.ClassesList, rawProject.FoldersList, file.InternalDependencies, file.ImportedClassesList);
                         UpdateClassMethodsSubcallsWithExternalCalls(file.ClassesList, rawProject.FoldersList, file.ExternalDependencies, file.ImportedExternalNames);
+
+                        // build file classes stats CSV content
+                        foreach (var cls in file.ClassesList)
+                        {
+                            var fullClassName = cls.RelativePath.Replace("/", ".").Replace(".py", ".") + cls.Name;
+                            
+                            var totalComplexity = 0;
+                            foreach (var method in cls.MethodsList)
+                            {
+                                totalComplexity += method.CyclomaticComplexity;
+                            }
+
+                            var localBasesNamesListStr = "";
+                            foreach (var spcls in cls.LocalSuperClassesList)
+                            {
+                                localBasesNamesListStr += spcls.RelativePath.Replace("/", ".").Replace(".py", ".") + spcls.Name + " | ";
+                            }
+
+                            if (localBasesNamesListStr.Length != 0)
+                            {
+                                localBasesNamesListStr = localBasesNamesListStr.Remove(localBasesNamesListStr.Length - 2);
+                            }
+                            
+                            var internalBasesNamesListStr = "";
+                            foreach (var spcls in cls.InternalSuperClassesList)
+                            {
+                                internalBasesNamesListStr += spcls.RelativePath.Replace("/", ".").Replace(".py", ".") + spcls.Name + " | ";
+                            }
+
+                            if (internalBasesNamesListStr.Length != 0)
+                            {
+                                internalBasesNamesListStr = internalBasesNamesListStr.Remove(internalBasesNamesListStr.Length - 2);
+                            }
+
+                            csvContentClassStats +=
+                                $"{fullClassName}, {cls.RelativePath}, {totalComplexity}, {localBasesNamesListStr}, {internalBasesNamesListStr}, {cls.Lines.LinesTotal}, {cls.Lines.LinesCoded}, {cls.Lines.LinesCommented}, {cls.Lines.linesDocs}, {cls.Lines.LinesEmpty}\n";
+                        }
                         
                         // build file method stats CSV content
                         foreach (var method in file.MethodsList)
@@ -954,6 +996,12 @@ namespace Rattlesnake
                 using (StreamWriter writer = new StreamWriter(methodStatsStream))
                 {
                     writer.Write(csvContentMethodStats);
+                }
+                
+                // write class stats
+                using (StreamWriter writer = new StreamWriter(classStatsStream))
+                {
+                    writer.Write(csvContentClassStats);
                 }
             }
             else
