@@ -6,6 +6,8 @@ public class ClassModel
 {
     [JsonPropertyName("name")]
     public String Name { get; set; }
+
+    public FileModel ContainingFile { get; set; }
     
     [JsonPropertyName("lines")]
     public LinesOfCode Lines { get; set; }

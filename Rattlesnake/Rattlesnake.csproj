@@ -11,6 +11,7 @@
       <Folder Include="python_scripts\results" />
       <Folder Include="RawModels" />
       <Folder Include="python_scripts" />
+      <Folder Include="results" />
     </ItemGroup>
 
 </Project>

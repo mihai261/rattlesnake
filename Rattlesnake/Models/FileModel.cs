@@ -13,8 +13,10 @@ public class FileModel : ProjectComponent
     [JsonPropertyName("imports")]
     public List<String> ImportsList { get; set; }
 
-    public List<InternalDependency> InternalDependencies;
-    public List<ExternalDependency> ExternalDependencies;
+    public HashSet<InternalDependency> InternalDependencies { get; set; }
+    public HashSet<ExternalDependency> ExternalDependencies { get; set; }
+    public HashSet<DependencyRelation> DependencyRelations { get; set; }
+    public HashSet<ExternalDependencyRelation> ExternalDependencyRelations { get; set; }
     
     [JsonPropertyName("classes")]
     public List<ClassModel> ClassesList { get; set; }
@@ -26,8 +28,10 @@ public class FileModel : ProjectComponent
     public List<MethodModel> MethodsList { get; set; }
 
     public FileModel(){
-        ExternalDependencies = new List<ExternalDependency>();
-        InternalDependencies = new List<InternalDependency>();
+        ExternalDependencies = new HashSet<ExternalDependency>();
+        InternalDependencies = new HashSet<InternalDependency>();
+        DependencyRelations = new HashSet<DependencyRelation>();
+        ExternalDependencyRelations = new HashSet<ExternalDependencyRelation>();
         ImportsList = new List<string>();
         ClassesList = new List<ClassModel>();
         ImportedClassesList = new List<ClassModel>();

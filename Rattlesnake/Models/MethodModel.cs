@@ -22,6 +22,8 @@ public class MethodModel
     [JsonPropertyName("parent")]
     public String Parent { get; set; }
     
+    public FileModel ContainingFile { get; set; }
+
     [JsonPropertyName("decorators")]
     public List<String> DecoratorsList { get; set; }
     

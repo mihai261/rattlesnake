@@ -73,6 +73,9 @@ namespace Rattlesnake
                         var mappedClassInstance = mappedClasses.Find(x => x.Name == cls.Name);
                         if (mappedClassInstance == null) continue;
                         
+                        var containingFile = mappedClassInstance.ContainingFile;
+                        var dependecyRelations = containingFile.DependencyRelations;
+
                         foreach (var baseClassName in cls.SuperClassesList)
                         {
                             if (Regex.IsMatch(baseClassName, @".*\..*"))
@@ -91,6 +94,22 @@ namespace Rattlesnake
                                         if (baseClassInstance != null)
                                         {
                                             mappedClassInstance.InternalSuperClassesList.Add(baseClassInstance);
+                                            var registeredDependency =
+                                                dependecyRelations.FirstOrDefault(
+                                                    x => x.Destination.Equals(fileDependency), null);
+                                            if (registeredDependency != null)
+                                            {
+                                                registeredDependency.NumberOfBaseDefinitions += 1;
+                                            }
+                                            else
+                                            {
+                                                dependecyRelations.Add(new DependencyRelation()
+                                                {
+                                                    Destination = fileDependency,
+                                                    NumberOfBaseDefinitions = 1,
+                                                    NumberOfMethodCalls = 0
+                                                });
+                                            }
                                         }
                                     }
                                 }
@@ -108,6 +127,22 @@ namespace Rattlesnake
                                             if (baseClassInstance != null)
                                             {
                                                 mappedClassInstance.InternalSuperClassesList.Add(baseClassInstance);
+                                                var registeredDependency =
+                                                    dependecyRelations.FirstOrDefault(
+                                                        x => x.Destination.Equals(fileDependency), null);
+                                                if (registeredDependency != null)
+                                                {
+                                                    registeredDependency.NumberOfBaseDefinitions += 1;
+                                                }
+                                                else
+                                                {
+                                                    dependecyRelations.Add(new DependencyRelation()
+                                                    {
+                                                        Destination = fileDependency,
+                                                        NumberOfBaseDefinitions = 1,
+                                                        NumberOfMethodCalls = 0
+                                                    });
+                                                }
                                             }
                                         }
                                     }
@@ -131,6 +166,10 @@ namespace Rattlesnake
                     {
                         var mappedClassInstance = mappedClasses.Find(x => x.Name == cls.Name);
                         if (mappedClassInstance == null) continue;
+                        
+                        var containingFile = mappedClassInstance.ContainingFile;
+                        var dependecyRelations = containingFile.ExternalDependencyRelations;
+
 
                         foreach (var baseClassName in cls.SuperClassesList)
                         {
@@ -144,6 +183,23 @@ namespace Rattlesnake
                                     Name = matchingImportedClassName.Name,
                                     Provider = matchingImportedClassName.Provider
                                 });
+                                
+                                var registeredDependency =
+                                    dependecyRelations.FirstOrDefault(
+                                        x => x.Destination.Equals(matchingImportedClassName.Provider), null);
+                                if (registeredDependency != null)
+                                {
+                                    registeredDependency.NumberOfBaseDefinitions += 1;
+                                }
+                                else
+                                {
+                                    dependecyRelations.Add(new ExternalDependencyRelation()
+                                    {
+                                        Destination = matchingImportedClassName.Provider,
+                                        NumberOfBaseDefinitions = 1,
+                                        NumberOfMethodCalls = 0
+                                    });
+                                }
                             }
                             
                             if (Regex.IsMatch(baseClassName, @".*\..*"))
@@ -159,6 +215,23 @@ namespace Rattlesnake
                                         Name = Regex.Split(baseClassName, @"\.")[1],
                                         Provider = dependency
                                     });
+                                    
+                                    var registeredDependency =
+                                        dependecyRelations.FirstOrDefault(
+                                            x => x.Destination.Equals(dependency), null);
+                                    if (registeredDependency != null)
+                                    {
+                                        registeredDependency.NumberOfBaseDefinitions += 1;
+                                    }
+                                    else
+                                    {
+                                        dependecyRelations.Add(new ExternalDependencyRelation()
+                                        {
+                                            Destination = dependency,
+                                            NumberOfBaseDefinitions = 1,
+                                            NumberOfMethodCalls = 0
+                                        });
+                                    }
                                 }
                                 
                                 // maybe dependency if brought like from x import y; base = y.Class1 => check for that too
@@ -171,6 +244,23 @@ namespace Rattlesnake
                                         Name = Regex.Split(baseClassName, @"\.")[1],
                                         Provider = dependency
                                     });
+                                    
+                                    var registeredDependency =
+                                        dependecyRelations.FirstOrDefault(
+                                            x => x.Destination.Equals(dependency), null);
+                                    if (registeredDependency != null)
+                                    {
+                                        registeredDependency.NumberOfBaseDefinitions += 1;
+                                    }
+                                    else
+                                    {
+                                        dependecyRelations.Add(new ExternalDependencyRelation()
+                                        {
+                                            Destination = dependency,
+                                            NumberOfBaseDefinitions = 1,
+                                            NumberOfMethodCalls = 0
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -267,14 +357,17 @@ namespace Rattlesnake
                     // if no definition, set the stats for the default init method
                     else
                     {
-                        MethodModel initMethod = new MethodModel();
-                        initMethod.IsDefault = true;
-                        initMethod.Name = "__init__";
-                        initMethod.TotalNumberOfSubCalls = 0;
-                        initMethod.RelativePath = relativePath;
-                        initMethod.CyclomaticComplexity = 1;
-                        initMethod.Lines = new LinesOfCode();
-                        initMethod.Parent = cls.Name;
+                        MethodModel initMethod = new MethodModel
+                        {
+                            IsDefault = true,
+                            ContainingFile = linkedClass.ContainingFile,
+                            Name = "__init__",
+                            TotalNumberOfSubCalls = 0,
+                            RelativePath = relativePath,
+                            CyclomaticComplexity = 1,
+                            Lines = new LinesOfCode(),
+                            Parent = cls.Name
+                        };
                         linkedClass.MethodsList.Add(initMethod);
                     }
                 }
@@ -282,16 +375,20 @@ namespace Rattlesnake
                 // map class methods
                 foreach (var mth in cls.MethodsList)
                 {
-                    MethodModel currentMethod = new MethodModel();
-                    currentMethod.Name = mth.Name;
                     mth.SubCallsList.RemoveAll(x => x == "error_parsing_in_Attr_node");
-                    currentMethod.TotalNumberOfSubCalls = mth.SubCallsList.Count;
-                    currentMethod.RelativePath = relativePath;
-                    currentMethod.CyclomaticComplexity = mth.CyclomaticComplexity;
-                    currentMethod.Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(mth.Lines));
-                    currentMethod.Parent = mth.Parent;
-                    currentMethod.DecoratorsList = mth.DecoratorsList;
-            
+
+                    MethodModel currentMethod = new MethodModel
+                    {
+                        Name = mth.Name,
+                        ContainingFile = linkedClass.ContainingFile,
+                        TotalNumberOfSubCalls = mth.SubCallsList.Count,
+                        RelativePath = relativePath,
+                        CyclomaticComplexity = mth.CyclomaticComplexity,
+                        Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(mth.Lines)),
+                        Parent = mth.Parent,
+                        DecoratorsList = mth.DecoratorsList
+                    };
+
                     // map arguments
                     foreach (var methodArg in mth.ArgumentsList)
                     {
@@ -503,6 +600,9 @@ namespace Rattlesnake
                         var mappedMethod = fileMethods.Find(x => x.Name == rawMethod.Name);
                         if (mappedMethod == null) continue;
 
+                        var containingFile = mappedMethod.ContainingFile;
+                        var dependecyRelations = containingFile.DependencyRelations;
+                        
                         foreach (var subcall in rawMethod.SubCallsList)
                         {
                             // see if call is to an (directly) imported class' init method
@@ -514,6 +614,23 @@ namespace Rattlesnake
                                     matchingImportedClassInstance.MethodsList.FirstOrDefault(
                                         x => x.Name == "__init__",
                                         null));
+                                
+                                var registeredDependency =
+                                    dependecyRelations.FirstOrDefault(
+                                        x => x.Destination.Equals(matchingImportedClassInstance.ContainingFile), null);
+                                if (registeredDependency != null)
+                                {
+                                    registeredDependency.NumberOfMethodCalls += 1;
+                                }
+                                else
+                                {
+                                    dependecyRelations.Add(new DependencyRelation()
+                                    {
+                                        Destination = matchingImportedClassInstance.ContainingFile,
+                                        NumberOfBaseDefinitions = 0,
+                                        NumberOfMethodCalls = 1
+                                    });
+                                }
                             }
                             
                             
@@ -536,6 +653,24 @@ namespace Rattlesnake
                                         if (subcallInstance != null)
                                         {
                                             mappedMethod.InternalSubCallsList.Add(subcallInstance);
+                                            
+                                            var registeredDependency =
+                                                dependecyRelations.FirstOrDefault(
+                                                    x => x.Destination.Equals(matchingImportedClassInstance.ContainingFile), null);
+                                            if (registeredDependency != null)
+                                            {
+                                                registeredDependency.NumberOfMethodCalls += 1;
+                                            }
+                                            else
+                                            {
+                                                dependecyRelations.Add(new DependencyRelation()
+                                                {
+                                                    Destination = matchingImportedClassInstance.ContainingFile,
+                                                    NumberOfBaseDefinitions = 0,
+                                                    NumberOfMethodCalls = 1
+                                                });
+                                            }
+                                            
                                             continue;
                                         }
 
@@ -548,6 +683,23 @@ namespace Rattlesnake
                                                 matchingClassInstance.MethodsList.FirstOrDefault(
                                                     x => x.Name == "__init__",
                                                     null));
+                                            
+                                            var registeredDependency =
+                                                dependecyRelations.FirstOrDefault(
+                                                    x => x.Destination.Equals(matchingImportedClassInstance.ContainingFile), null);
+                                            if (registeredDependency != null)
+                                            {
+                                                registeredDependency.NumberOfMethodCalls += 1;
+                                            }
+                                            else
+                                            {
+                                                dependecyRelations.Add(new DependencyRelation()
+                                                {
+                                                    Destination = matchingImportedClassInstance.ContainingFile,
+                                                    NumberOfBaseDefinitions = 0,
+                                                    NumberOfMethodCalls = 1
+                                                });
+                                            }
                                         }
                                     }
                                 }
@@ -566,6 +718,23 @@ namespace Rattlesnake
                                             if (subcallInstance != null)
                                             {
                                                 mappedMethod.InternalSubCallsList.Add(subcallInstance);
+                                                
+                                                var registeredDependency =
+                                                    dependecyRelations.FirstOrDefault(
+                                                        x => x.Destination.Equals(matchingImportedClassInstance.ContainingFile), null);
+                                                if (registeredDependency != null)
+                                                {
+                                                    registeredDependency.NumberOfMethodCalls += 1;
+                                                }
+                                                else
+                                                {
+                                                    dependecyRelations.Add(new DependencyRelation()
+                                                    {
+                                                        Destination = matchingImportedClassInstance.ContainingFile,
+                                                        NumberOfBaseDefinitions = 0,
+                                                        NumberOfMethodCalls = 1
+                                                    });
+                                                }
                                             }
                                         }
                                     }
@@ -588,6 +757,9 @@ namespace Rattlesnake
                     {
                         var mappedMethod = fileMethods.Find(x => x.Name == rawMethod.Name);
                         if (mappedMethod == null) continue;
+                        
+                        var containingFile = mappedMethod.ContainingFile;
+                        var dependecyRelations = containingFile.ExternalDependencyRelations;
 
                         foreach (var subcall in rawMethod.SubCallsList)
                         {
@@ -602,6 +774,23 @@ namespace Rattlesnake
                                         Name = matchingImportedClassName.Name,
                                         Provider = matchingImportedClassName.Provider
                                     });
+                                
+                                var registeredDependency =
+                                    dependecyRelations.FirstOrDefault(
+                                        x => x.Destination.Equals(matchingImportedClassName.Provider), null);
+                                if (registeredDependency != null)
+                                {
+                                    registeredDependency.NumberOfMethodCalls += 1;
+                                }
+                                else
+                                {
+                                    dependecyRelations.Add(new ExternalDependencyRelation()
+                                    {
+                                        Destination = matchingImportedClassName.Provider,
+                                        NumberOfBaseDefinitions = 0,
+                                        NumberOfMethodCalls = 1
+                                    });
+                                }
                             }
 
 
@@ -620,6 +809,23 @@ namespace Rattlesnake
                                             Name = Regex.Split(subcall, @"\.")[1],
                                             Provider = dependency
                                         });
+                                    
+                                    var registeredDependency =
+                                        dependecyRelations.FirstOrDefault(
+                                            x => x.Destination.Equals(dependency), null);
+                                    if (registeredDependency != null)
+                                    {
+                                        registeredDependency.NumberOfMethodCalls += 1;
+                                    }
+                                    else
+                                    {
+                                        dependecyRelations.Add(new ExternalDependencyRelation()
+                                        {
+                                            Destination = dependency,
+                                            NumberOfBaseDefinitions = 0,
+                                            NumberOfMethodCalls = 1
+                                        });
+                                    }
                                 }
                                 
                                 // maybe dependency if brought like from x import y; base = y.Class1 => check for that too
@@ -632,6 +838,23 @@ namespace Rattlesnake
                                         Name = Regex.Split(subcall, @"\.")[1],
                                         Provider = dependency
                                     });
+                                    
+                                    var registeredDependency =
+                                        dependecyRelations.FirstOrDefault(
+                                            x => x.Destination.Equals(dependency), null);
+                                    if (registeredDependency != null)
+                                    {
+                                        registeredDependency.NumberOfMethodCalls += 1;
+                                    }
+                                    else
+                                    {
+                                        dependecyRelations.Add(new ExternalDependencyRelation()
+                                        {
+                                            Destination = dependency,
+                                            NumberOfBaseDefinitions = 0,
+                                            NumberOfMethodCalls = 1
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -656,6 +879,9 @@ namespace Rattlesnake
                         {
                             var mappedMethod = mappedClassInstance.MethodsList.FirstOrDefault(x => x.Name == rawMethod.Name, null);
                             if (mappedMethod == null) continue;
+                            
+                            var containingFile = mappedClassInstance.ContainingFile;
+                            var dependecyRelations = containingFile.DependencyRelations;
 
                             foreach (var subcall in rawMethod.SubCallsList)
                             {
@@ -668,6 +894,23 @@ namespace Rattlesnake
                                         matchingImportedClassInstance.MethodsList.FirstOrDefault(
                                             x => x.Name == "__init__",
                                             null));
+                                    
+                                    var registeredDependency =
+                                        dependecyRelations.FirstOrDefault(
+                                            x => x.Destination.Equals(matchingImportedClassInstance.ContainingFile), null);
+                                    if (registeredDependency != null)
+                                    {
+                                        registeredDependency.NumberOfMethodCalls += 1;
+                                    }
+                                    else
+                                    {
+                                        dependecyRelations.Add(new DependencyRelation()
+                                        {
+                                            Destination = matchingImportedClassInstance.ContainingFile,
+                                            NumberOfBaseDefinitions = 0,
+                                            NumberOfMethodCalls = 1
+                                        });
+                                    }
                                 }
 
 
@@ -690,6 +933,24 @@ namespace Rattlesnake
                                             if (subcallInstance != null)
                                             {
                                                 mappedMethod.InternalSubCallsList.Add(subcallInstance);
+                                                
+                                                var registeredDependency =
+                                                    dependecyRelations.FirstOrDefault(
+                                                        x => x.Destination.Equals(subcallInstance.ContainingFile), null);
+                                                if (registeredDependency != null)
+                                                {
+                                                    registeredDependency.NumberOfMethodCalls += 1;
+                                                }
+                                                else
+                                                {
+                                                    dependecyRelations.Add(new DependencyRelation()
+                                                    {
+                                                        Destination = subcallInstance.ContainingFile,
+                                                        NumberOfBaseDefinitions = 0,
+                                                        NumberOfMethodCalls = 1
+                                                    });
+                                                }
+                                                
                                                 continue;
                                             }
 
@@ -702,6 +963,23 @@ namespace Rattlesnake
                                                     matchingClassInstance.MethodsList.FirstOrDefault(
                                                         x => x.Name == "__init__",
                                                         null));
+                                                
+                                                var registeredDependency =
+                                                    dependecyRelations.FirstOrDefault(
+                                                        x => x.Destination.Equals(matchingClassInstance.ContainingFile), null);
+                                                if (registeredDependency != null)
+                                                {
+                                                    registeredDependency.NumberOfMethodCalls += 1;
+                                                }
+                                                else
+                                                {
+                                                    dependecyRelations.Add(new DependencyRelation()
+                                                    {
+                                                        Destination = matchingClassInstance.ContainingFile,
+                                                        NumberOfBaseDefinitions = 0,
+                                                        NumberOfMethodCalls = 1
+                                                    });
+                                                }
                                             }
                                         }
                                     }
@@ -720,6 +998,24 @@ namespace Rattlesnake
                                                 if (subcallInstance != null)
                                                 {
                                                     mappedMethod.InternalSubCallsList.Add(subcallInstance);
+                                                    
+                                                    var registeredDependency =
+                                                        dependecyRelations.FirstOrDefault(
+                                                            x => x.Destination.Equals(subcallInstance.ContainingFile), null);
+                                                    if (registeredDependency != null)
+                                                    {
+                                                        registeredDependency.NumberOfMethodCalls += 1;
+                                                    }
+                                                    else
+                                                    {
+                                                        dependecyRelations.Add(new DependencyRelation()
+                                                        {
+                                                            Destination = matchingImportedClassInstance.ContainingFile,
+                                                            NumberOfBaseDefinitions = 0,
+                                                            NumberOfMethodCalls = 1
+                                                        });
+                                                    }
+                                                    
                                                     continue;
                                                 }
                                                 
@@ -732,6 +1028,23 @@ namespace Rattlesnake
                                                         matchingClassInstance.MethodsList.FirstOrDefault(
                                                             x => x.Name == "__init__",
                                                             null));
+                                                    
+                                                    var registeredDependency =
+                                                        dependecyRelations.FirstOrDefault(
+                                                            x => x.Destination.Equals(matchingClassInstance.ContainingFile), null);
+                                                    if (registeredDependency != null)
+                                                    {
+                                                        registeredDependency.NumberOfMethodCalls += 1;
+                                                    }
+                                                    else
+                                                    {
+                                                        dependecyRelations.Add(new DependencyRelation()
+                                                        {
+                                                            Destination = matchingClassInstance.ContainingFile,
+                                                            NumberOfBaseDefinitions = 0,
+                                                            NumberOfMethodCalls = 1
+                                                        });
+                                                    }
                                                 }
                                                 
                                             }
@@ -757,6 +1070,9 @@ namespace Rattlesnake
                     {
                         var mappedClassInstance = mappedClasses.Find(x => rawClass.Name == x.Name);
                         if (mappedClassInstance == null) continue;
+                        
+                        var containingFile = mappedClassInstance.ContainingFile;
+                        var dependecyRelations = containingFile.ExternalDependencyRelations;
 
                         foreach (var rawMethod in rawClass.MethodsList)
                         {
@@ -777,6 +1093,23 @@ namespace Rattlesnake
                                             Name = matchingImportedClassName.Name,
                                             Provider = matchingImportedClassName.Provider
                                         });
+                                    
+                                    var registeredDependency =
+                                        dependecyRelations.FirstOrDefault(
+                                            x => x.Destination.Equals(matchingImportedClassName.Provider), null);
+                                    if (registeredDependency != null)
+                                    {
+                                        registeredDependency.NumberOfMethodCalls += 1;
+                                    }
+                                    else
+                                    {
+                                        dependecyRelations.Add(new ExternalDependencyRelation()
+                                        {
+                                            Destination = matchingImportedClassName.Provider,
+                                            NumberOfBaseDefinitions = 0,
+                                            NumberOfMethodCalls = 1
+                                        });
+                                    }
                                 }
 
 
@@ -795,6 +1128,24 @@ namespace Rattlesnake
                                                 Name = Regex.Split(subcall, @"\.")[1],
                                                 Provider = dependency
                                             });
+                                        
+                                        
+                                        var registeredDependency =
+                                            dependecyRelations.FirstOrDefault(
+                                                x => x.Destination.Equals(dependency), null);
+                                        if (registeredDependency != null)
+                                        {
+                                            registeredDependency.NumberOfMethodCalls += 1;
+                                        }
+                                        else
+                                        {
+                                            dependecyRelations.Add(new ExternalDependencyRelation()
+                                            {
+                                                Destination = dependency,
+                                                NumberOfBaseDefinitions = 0,
+                                                NumberOfMethodCalls = 1
+                                            });
+                                        }
                                     }
                                     
                                     // maybe dependency if brought like from x import y; base = y.Class1 => check for that too
@@ -807,6 +1158,23 @@ namespace Rattlesnake
                                             Name = Regex.Split(subcall, @"\.")[1],
                                             Provider = dependency
                                         });
+                                        
+                                        var registeredDependency =
+                                            dependecyRelations.FirstOrDefault(
+                                                x => x.Destination.Equals(dependency), null);
+                                        if (registeredDependency != null)
+                                        {
+                                            registeredDependency.NumberOfMethodCalls += 1;
+                                        }
+                                        else
+                                        {
+                                            dependecyRelations.Add(new ExternalDependencyRelation()
+                                            {
+                                                Destination = dependency,
+                                                NumberOfBaseDefinitions = 0,
+                                                NumberOfMethodCalls = 1
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -934,6 +1302,16 @@ namespace Rattlesnake
                         file.Lines = JsonSerializer.Deserialize<LinesOfCode>(JsonSerializer.Serialize(rawFile.Lines));
                         file.MethodsList = fileMethods;
                         file.ClassesList = classes;
+
+                        foreach (var cls in file.ClassesList)
+                        {
+                            cls.ContainingFile = file;
+                        }
+
+                        foreach (var mth in file.MethodsList)
+                        {
+                            mth.ContainingFile = file;
+                        }
                         
                         folder.FilesList.Add(file);
                     }
@@ -945,10 +1323,14 @@ namespace Rattlesnake
                 var projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
                 Directory.CreateDirectory($"{projectDirectory}/results");
                 
-                // create file linking results CSV
-                var fileLinksStream = File.Create($"{projectDirectory}/results/file_links.csv");
-                var csvContentFileLinks = "File, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Internal Dependencies, External Dependencies\n";
+                // create file stats results CSV
+                var fileStatsStream = File.Create($"{projectDirectory}/results/file_stats.csv");
+                var csvContentFileStats = "File, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Internal Dependencies, External Dependencies\n";
                 
+                // create file links results CSV
+                var fileLinksStream = File.Create($"{projectDirectory}/results/file_links.csv");
+                var csvContentFileLinks = "Source, Destination, No. Of Bases Definitions, No. Of Method Calls\n";
+                    
                 // create method statistics results CSV
                 var methodStatsStream = File.Create($"{projectDirectory}/results/method_stats.csv");
                 var csvContentMethodStats = "Method Name, Relative Path, Parent Class, Cyclomatic Complexity, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Total No. Of Subcalls, No. Of Local Subcalls, No. Of Internal Subcalls, No. Of External Subcalls\n";
@@ -963,7 +1345,9 @@ namespace Rattlesnake
                     foreach (var file in dir.FilesList)
                     {
                         var internalDepsPathList = "";
+                        var internalDepsPathSet = new HashSet<string>();
                         var externalDepsPathList = "";
+                        var externalDepsPathSet = new HashSet<string>();
                         // map imports 
                         foreach (var import in file.ImportsList)
                         {
@@ -975,7 +1359,12 @@ namespace Rattlesnake
                                 dependency.Name = import;
                                 dependency.Source = linkedImport;
                                 file.InternalDependencies.Add(dependency);
-                                internalDepsPathList += (dependency.Source.RelativePath + " | ");
+                                var alteredPath = dependency.Source.RelativePath;
+                                if (alteredPath.StartsWith($"{project.Name}"))
+                                {
+                                    alteredPath = alteredPath.Substring(project.Name.Length);
+                                }
+                                internalDepsPathSet.Add(alteredPath);
 
                                 if (linkedClass != null)
                                 {
@@ -998,14 +1387,24 @@ namespace Rattlesnake
                                     });
                                 }
                                 
-                                externalDepsPathList += (depedency.Name + " | ");
+                                externalDepsPathSet.Add(depedency.Name);
                             }
+                        }
+
+                        foreach (var dep in internalDepsPathSet)
+                        {
+                            internalDepsPathList += $"{dep} | ";
                         }
 
                         if (internalDepsPathList.Length != 0)
                         {
                             internalDepsPathList = internalDepsPathList.Remove(internalDepsPathList.Length - 2);
 
+                        }
+
+                        foreach (var dep in externalDepsPathSet)
+                        {
+                            externalDepsPathList += $"{dep} | ";
                         }
                         
                         if (externalDepsPathList.Length != 0)
@@ -1015,20 +1414,20 @@ namespace Rattlesnake
                         }
 
                         // update bases list with class instances from other internal modules
-                        MapInternalClassBases(file.ClassesList, file.InternalDependencies, rawProject.FoldersList);
+                        MapInternalClassBases(file.ClassesList, file.InternalDependencies.ToList(), rawProject.FoldersList);
                         
                         // update bases list with instances from other external modules
-                        MapExternalClassBases(file.ClassesList, file.ExternalDependencies, rawProject.FoldersList, file.ImportedExternalNames);
+                        MapExternalClassBases(file.ClassesList, file.ExternalDependencies.ToList(), rawProject.FoldersList, file.ImportedExternalNames);
                         
                         // update file method subcalls to include references to methods from other internal modules
-                        UpdateFileMethodsSubcallsListWithInternalCalls(file.MethodsList, rawProject.FoldersList, file.InternalDependencies, file.ImportedClassesList);
+                        UpdateFileMethodsSubcallsListWithInternalCalls(file.MethodsList, rawProject.FoldersList, file.InternalDependencies.ToList(), file.ImportedClassesList);
                         
                         // update file method subcalls to include references to external names
-                        UpdateFileMethodsSubcallsListWithExternalCalls(file.MethodsList, rawProject.FoldersList, file.ExternalDependencies, file.ImportedExternalNames);
+                        UpdateFileMethodsSubcallsListWithExternalCalls(file.MethodsList, rawProject.FoldersList, file.ExternalDependencies.ToList(), file.ImportedExternalNames);
                         
                         // update class methods subcalls for each class in the current file
-                        UpdateClassMethodsSubcallsWithInternalCalls(file.ClassesList, rawProject.FoldersList, file.InternalDependencies, file.ImportedClassesList);
-                        UpdateClassMethodsSubcallsWithExternalCalls(file.ClassesList, rawProject.FoldersList, file.ExternalDependencies, file.ImportedExternalNames);
+                        UpdateClassMethodsSubcallsWithInternalCalls(file.ClassesList, rawProject.FoldersList, file.InternalDependencies.ToList(), file.ImportedClassesList);
+                        UpdateClassMethodsSubcallsWithExternalCalls(file.ClassesList, rawProject.FoldersList, file.ExternalDependencies.ToList(), file.ImportedExternalNames);
 
                         // build file classes stats CSV content
                         foreach (var cls in file.ClassesList)
@@ -1075,7 +1474,7 @@ namespace Rattlesnake
                             }
 
                             csvContentClassStats +=
-                                $"{fullClassName}, {cls.RelativePath}, {totalComplexity}, {localBasesNamesListStr}, {internalBasesNamesListStr}, {externalBasesNamesListStr}, {cls.Lines.LinesTotal}, {cls.Lines.LinesCoded}, {cls.Lines.LinesCommented}, {cls.Lines.linesDocs}, {cls.Lines.LinesEmpty}\n";
+                                $"{fullClassName}, {cls.RelativePath.Substring(project.Name.Length)}, {totalComplexity}, {localBasesNamesListStr}, {internalBasesNamesListStr}, {externalBasesNamesListStr}, {cls.Lines.LinesTotal}, {cls.Lines.LinesCoded}, {cls.Lines.LinesCommented}, {cls.Lines.linesDocs}, {cls.Lines.LinesEmpty}\n";
                         }
                         
                         // build file method stats CSV content
@@ -1084,9 +1483,9 @@ namespace Rattlesnake
                             var parent = method.Parent != "*" ? method.Parent : "N/A";
                             var fullMethodName = method.RelativePath.Replace("/", ".").Replace(".py", ".") + method.Name;
                             csvContentMethodStats +=
-                                $"{fullMethodName}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count}, {method.ExternalSubCallsList.Count}\n";
+                                $"{fullMethodName}, {method.RelativePath.Substring(project.Name.Length)}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count}, {method.ExternalSubCallsList.Count}\n";
                         }
-
+                        
                         // build class method stats CSV content
                         foreach (var cls in file.ClassesList)
                         {
@@ -1095,16 +1494,35 @@ namespace Rattlesnake
                                 var parent = method.Parent != "*" ? method.Parent : "N/A";
                                 var fullMethodName = method.RelativePath.Replace("/", ".").Replace(".py", ".") + $"{parent}." + method.Name;
                                 csvContentMethodStats +=
-                                    $"{fullMethodName}, {method.RelativePath}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count},  {method.ExternalSubCallsList.Count}\n";
+                                    $"{fullMethodName}, {method.RelativePath.Substring(project.Name.Length)}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count},  {method.ExternalSubCallsList.Count}\n";
                             }
                         }
                         
+                        // build file stats CSV content
+                        csvContentFileStats += $"{file.RelativePath.Substring(project.Name.Length)}, {file.Lines.LinesTotal}, {file.Lines.LinesCoded}, {file.Lines.LinesCommented}, {file.Lines.linesDocs}, {file.Lines.LinesEmpty}, {internalDepsPathList}, {externalDepsPathList}\n";
+                        
                         // build file links CSV content
-                        csvContentFileLinks += $"{file.RelativePath}, {file.Lines.LinesTotal}, {file.Lines.LinesCoded}, {file.Lines.LinesCommented}, {file.Lines.linesDocs}, {file.Lines.LinesEmpty}, {internalDepsPathList}, {externalDepsPathList}\n";
+                        foreach (var relation in file.DependencyRelations)
+                        {
+                            csvContentFileLinks +=
+                                $"{file.RelativePath.Substring(project.Name.Length)}, {relation.Destination.RelativePath.Substring(project.Name.Length)}, {relation.NumberOfBaseDefinitions}, {relation.NumberOfMethodCalls}\n";
+                        }
+                        
+                        foreach (var relation in file.ExternalDependencyRelations)
+                        {
+                            csvContentFileLinks +=
+                                $"{file.RelativePath.Substring(project.Name.Length)}, {relation.Destination.Name}, {relation.NumberOfBaseDefinitions}, {relation.NumberOfMethodCalls}\n";
+                        }
                     }
                 }
                 
-                // write file links
+                // write file stats
+                using (StreamWriter writer = new StreamWriter(fileStatsStream))
+                {
+                    writer.Write(csvContentFileStats);
+                }
+                
+                // write file relations
                 using (StreamWriter writer = new StreamWriter(fileLinksStream))
                 {
                     writer.Write(csvContentFileLinks);
