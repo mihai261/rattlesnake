@@ -119,6 +119,66 @@ namespace Rattlesnake
             }
         }
 
+        private static void MapExternalClassBases(List<ClassModel> mappedClasses,
+            List<ExternalDependency> externalDependencies, List<RawFolderModel> projectFolders,
+            List<ExternalNamedEntity> importedNames)
+        {
+            foreach (var dir in projectFolders)
+            {
+                foreach (var file in dir.FilesList)
+                {
+                    foreach (var cls in file.ClassesList)
+                    {
+                        var mappedClassInstance = mappedClasses.Find(x => x.Name == cls.Name);
+                        if (mappedClassInstance == null) continue;
+
+                        foreach (var baseClassName in cls.SuperClassesList)
+                        {
+                            // see if base name is referencing a directly imported name (e.g. could be method or class init function)
+                            var matchingImportedClassName =
+                                importedNames.Find(x => x.Name == baseClassName);
+                            if (matchingImportedClassName != null)
+                            {
+                                mappedClassInstance.ExternalSuperClassesList.Add(new ExternalNamedEntity()
+                                {
+                                    Name = matchingImportedClassName.Name,
+                                    Provider = matchingImportedClassName.Provider
+                                });
+                            }
+                            
+                            if (Regex.IsMatch(baseClassName, @".*\..*"))
+                            {
+                                var moduleName = Regex.Split(baseClassName, @"\.")[0];
+
+                                // see if import of matching external module exists 
+                                var dependency = externalDependencies.Find(x => x.Name == moduleName);
+                                if (dependency != null)
+                                {
+                                    mappedClassInstance.ExternalSuperClassesList.Add(new ExternalNamedEntity()
+                                    {
+                                        Name = Regex.Split(baseClassName, @"\.")[1],
+                                        Provider = dependency
+                                    });
+                                }
+                                
+                                // maybe dependency if brought like from x import y; base = y.Class1 => check for that too
+                                dependency = externalDependencies.Find(x =>
+                                    Regex.IsMatch(x.Name, @".\." + moduleName + "$"));
+                                if (dependency != null)
+                                {
+                                    mappedClassInstance.ExternalSuperClassesList.Add(new ExternalNamedEntity()
+                                    {
+                                        Name = Regex.Split(baseClassName, @"\.")[1],
+                                        Provider = dependency
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         private static List<MethodModel> MapFileMethods(RawFileModel rawFile, String relativePath, List<ClassModel> mappedClasses)
         {
             var fileMethods = new List<MethodModel>();
@@ -537,7 +597,7 @@ namespace Rattlesnake
                             if (matchingImportedClassName != null)
                             {
                                 mappedMethod.ExternalSubCallsList.Add(
-                                    new ExternalMethodModel()
+                                    new ExternalNamedEntity()
                                     {
                                         Name = matchingImportedClassName.Name,
                                         Provider = matchingImportedClassName.Provider
@@ -550,16 +610,28 @@ namespace Rattlesnake
                             {
                                 var moduleName = Regex.Split(subcall, @"\.")[0];
 
-                                // see if import of matching internal module exists 
+                                // see if import of matching external module exists 
                                 var dependency = externalDependencies.Find(x => x.Name == moduleName);
                                 if (dependency != null)
                                 {
                                     mappedMethod.ExternalSubCallsList.Add(
-                                        new ExternalMethodModel()
+                                        new ExternalNamedEntity()
                                         {
                                             Name = Regex.Split(subcall, @"\.")[1],
                                             Provider = dependency
                                         });
+                                }
+                                
+                                // maybe dependency if brought like from x import y; base = y.Class1 => check for that too
+                                dependency = externalDependencies.Find(x =>
+                                    Regex.IsMatch(x.Name, @".\." + moduleName + "$"));
+                                if (dependency != null)
+                                {
+                                    mappedMethod.ExternalSubCallsList.Add(new ExternalNamedEntity()
+                                    {
+                                        Name = Regex.Split(subcall, @"\.")[1],
+                                        Provider = dependency
+                                    });
                                 }
                             }
                         }
@@ -700,7 +772,7 @@ namespace Rattlesnake
                                 if (matchingImportedClassName != null)
                                 {
                                     mappedMethod.ExternalSubCallsList.Add(
-                                        new ExternalMethodModel()
+                                        new ExternalNamedEntity()
                                         {
                                             Name = matchingImportedClassName.Name,
                                             Provider = matchingImportedClassName.Provider
@@ -713,16 +785,28 @@ namespace Rattlesnake
                                 {
                                     var moduleName = Regex.Split(subcall, @"\.")[0];
 
-                                    // see if import of matching internal module exists 
+                                    // see if import of matching external module exists 
                                     var dependency = externalDependencies.Find(x => x.Name == moduleName);
                                     if (dependency != null)
                                     {
                                         mappedMethod.ExternalSubCallsList.Add(
-                                            new ExternalMethodModel()
+                                            new ExternalNamedEntity()
                                             {
                                                 Name = Regex.Split(subcall, @"\.")[1],
                                                 Provider = dependency
                                             });
+                                    }
+                                    
+                                    // maybe dependency if brought like from x import y; base = y.Class1 => check for that too
+                                    dependency = externalDependencies.Find(x =>
+                                        Regex.IsMatch(x.Name, @".\." + moduleName + "$"));
+                                    if (dependency != null)
+                                    {
+                                        mappedMethod.ExternalSubCallsList.Add(new ExternalNamedEntity()
+                                        {
+                                            Name = Regex.Split(subcall, @"\.")[1],
+                                            Provider = dependency
+                                        });
                                     }
                                 }
                             }
@@ -741,7 +825,13 @@ namespace Rattlesnake
             {
                 return (package, null);
             }
-            
+
+            // see if it's a relative import
+            package = projectFolders.Find(x => x.PackageName.EndsWith(importString));
+            if (package != null)
+            {
+                return (package, null);
+            }
             
             // see if import is a file from an internal package
             if (!importString.Contains("."))
@@ -751,6 +841,13 @@ namespace Rattlesnake
             var importedEntityName = importString.Substring(importString.LastIndexOf(".") + 1);
             var containingPackageName = importString.Substring(0, importString.LastIndexOf("."));
             package = projectFolders.Find(x => x.PackageName == containingPackageName);
+            
+            // see if it's relative import (same as above)
+            if (package == null)
+            {
+                package = projectFolders.Find(x => x.PackageName.EndsWith(importString));
+            }
+            
             if (package != null)
             {
                 var importedFile = package.FilesList.Find(x => x.Name == importString.Substring(importString.LastIndexOf(".")+1) + ".py");
@@ -769,6 +866,13 @@ namespace Rattlesnake
             var importedFileName = containingPackageName.Substring(containingPackageName.LastIndexOf(".") + 1);
             containingPackageName = containingPackageName.Substring(0, containingPackageName.LastIndexOf("."));
             package = projectFolders.Find(x => x.PackageName == containingPackageName);
+            
+            // see if it's relative import (same as above)
+            if (package == null)
+            {
+                package = projectFolders.Find(x => x.PackageName.EndsWith(importString));
+            }
+            
             if (package != null)
             {
                 var importedFile = package.FilesList.Find(x => x.Name == importedFileName + ".py");
@@ -851,7 +955,7 @@ namespace Rattlesnake
                 
                 // create class statistics results CSV
                 var classStatsStream = File.Create($"{projectDirectory}/results/class_stats.csv");
-                var csvContentClassStats = "Class Name, Relative Path, Total Cyclomatic Complexity, Local Bases, Internal Bases, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines\n";
+                var csvContentClassStats = "Class Name, Relative Path, Total Cyclomatic Complexity, Local Bases, Internal Bases, External Bases, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines\n";
 
                 // map non-local dependencies
                 foreach (var dir in project.FoldersList)
@@ -913,6 +1017,9 @@ namespace Rattlesnake
                         // update bases list with class instances from other internal modules
                         MapInternalClassBases(file.ClassesList, file.InternalDependencies, rawProject.FoldersList);
                         
+                        // update bases list with instances from other external modules
+                        MapExternalClassBases(file.ClassesList, file.ExternalDependencies, rawProject.FoldersList, file.ImportedExternalNames);
+                        
                         // update file method subcalls to include references to methods from other internal modules
                         UpdateFileMethodsSubcallsListWithInternalCalls(file.MethodsList, rawProject.FoldersList, file.InternalDependencies, file.ImportedClassesList);
                         
@@ -955,9 +1062,20 @@ namespace Rattlesnake
                             {
                                 internalBasesNamesListStr = internalBasesNamesListStr.Remove(internalBasesNamesListStr.Length - 2);
                             }
+                            
+                            var externalBasesNamesListStr = "";
+                            foreach (var spcls in cls.ExternalSuperClassesList)
+                            {
+                                externalBasesNamesListStr += $"{spcls.Provider.Name}.{spcls.Name} | ";
+                            }
+                            
+                            if (externalBasesNamesListStr.Length != 0)
+                            {
+                                externalBasesNamesListStr = externalBasesNamesListStr.Remove(externalBasesNamesListStr.Length - 2);
+                            }
 
                             csvContentClassStats +=
-                                $"{fullClassName}, {cls.RelativePath}, {totalComplexity}, {localBasesNamesListStr}, {internalBasesNamesListStr}, {cls.Lines.LinesTotal}, {cls.Lines.LinesCoded}, {cls.Lines.LinesCommented}, {cls.Lines.linesDocs}, {cls.Lines.LinesEmpty}\n";
+                                $"{fullClassName}, {cls.RelativePath}, {totalComplexity}, {localBasesNamesListStr}, {internalBasesNamesListStr}, {externalBasesNamesListStr}, {cls.Lines.LinesTotal}, {cls.Lines.LinesCoded}, {cls.Lines.LinesCommented}, {cls.Lines.linesDocs}, {cls.Lines.LinesEmpty}\n";
                         }
                         
                         // build file method stats CSV content

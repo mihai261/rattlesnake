@@ -22,12 +22,14 @@ public class ClassModel
     [JsonIgnore]
     public List<ClassModel> LocalSuperClassesList { get; set; }
     public List<ClassModel> InternalSuperClassesList { get; set; }
+    public List<ExternalNamedEntity> ExternalSuperClassesList { get; set; }
 
     public ClassModel()
     {
         MethodsList = new HashSet<MethodModel>();
         LocalSuperClassesList = new List<ClassModel>();
         InternalSuperClassesList = new List<ClassModel>();
+        ExternalSuperClassesList = new List<ExternalNamedEntity>();
         ObjectAssignments = new List<ObjectAssignmentModel>();
     }
 }

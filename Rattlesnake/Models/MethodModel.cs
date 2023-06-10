@@ -31,7 +31,7 @@ public class MethodModel
     [JsonPropertyName("sub_calls")]
     public List<MethodModel> LocalSubCallsList { get; set; }
     public List<MethodModel> InternalSubCallsList { get; set; }
-    public List<ExternalMethodModel> ExternalSubCallsList { get; set; }
+    public List<ExternalNamedEntity> ExternalSubCallsList { get; set; }
     public List<String> UnknownSubCallList { get; set; }
 
     public MethodModel()
@@ -41,7 +41,7 @@ public class MethodModel
         DecoratorsList = new List<string>();
         LocalSubCallsList = new List<MethodModel>();
         InternalSubCallsList = new List<MethodModel>();
-        ExternalSubCallsList= new List<ExternalMethodModel>();
+        ExternalSubCallsList= new List<ExternalNamedEntity>();
         UnknownSubCallList = new List<String>();
     }
 }
