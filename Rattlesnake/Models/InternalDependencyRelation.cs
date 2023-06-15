@@ -1,6 +1,6 @@
 namespace Rattlesnake.Models;
 
-public class DependencyRelation
+public class InternalDependencyRelation
 {
     public FileModel Destination { get; set; }
     public int NumberOfBaseDefinitions { get; set; }

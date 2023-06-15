@@ -1,7 +1,6 @@
 namespace Rattlesnake.Models;
 
-public class ExternalNamedEntity
+public class ExternalNamedEntity : NamedProjectComponent
 {
-    public string Name { get; set; }
-    public ExternalDependency Provider { get; set; }
+    public NamedProjectComponent Provider { get; set; }
 }

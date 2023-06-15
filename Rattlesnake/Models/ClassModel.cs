@@ -2,26 +2,15 @@ using System.Text.Json.Serialization;
 
 namespace Rattlesnake.Models;
 
-public class ClassModel
+public class ClassModel : InternalProjectComponent
 {
-    [JsonPropertyName("name")]
-    public String Name { get; set; }
-
     public FileModel ContainingFile { get; set; }
     
     [JsonPropertyName("lines")]
     public LinesOfCode Lines { get; set; }
-    
     public String RelativePath { get; set; }
-
-    [JsonPropertyName("methods")]
     public HashSet<MethodModel> MethodsList { get; set; }
-    
-    
-    [JsonPropertyName("object_assignments")]
     public List<ObjectAssignmentModel> ObjectAssignments { get; set; }
-    
-    [JsonIgnore]
     public List<ClassModel> LocalSuperClassesList { get; set; }
     public List<ClassModel> InternalSuperClassesList { get; set; }
     public List<ExternalNamedEntity> ExternalSuperClassesList { get; set; }

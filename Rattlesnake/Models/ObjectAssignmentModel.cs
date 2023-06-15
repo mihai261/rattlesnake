@@ -4,9 +4,6 @@ namespace Rattlesnake.Models;
 
 public class ObjectAssignmentModel
 {
-    [JsonPropertyName("variable_name")]
     public String VariableName { get; set; }
-    
-    [JsonPropertyName("assigned_class")]
     public ClassModel Type { get; set; }
 }

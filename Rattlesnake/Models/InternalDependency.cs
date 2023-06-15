@@ -1,7 +1,6 @@
 namespace Rattlesnake.Models;
 
-public class InternalDependency
+public class InternalDependency : InternalProjectComponent
 {
-    public String Name { get; set; }
-    public ProjectComponent Source { get; set; }
+    public InternalProjectComponent Source { get; set; }
 }

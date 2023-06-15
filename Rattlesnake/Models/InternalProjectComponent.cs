@@ -2,8 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Rattlesnake.Models;
 
-public class ProjectComponent
+public class InternalProjectComponent : NamedProjectComponent
 {
-    [JsonPropertyName("path")]
     public String RelativePath { get; set; }
 }
