@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Rattlesnake.Models;
+namespace Rattlesnake.LinkedModels;
 
 public class FileModel : InternalProjectComponent
 {
@@ -18,7 +18,6 @@ public class FileModel : InternalProjectComponent
     public List<ClassModel> ImportedClassesList { get; set; }
     public List<ExternalNamedEntity> ImportedExternalNames { get; set; }
     
-    [JsonPropertyName("methods")]
     public List<MethodModel> MethodsList { get; set; }
 
     public FileModel(){

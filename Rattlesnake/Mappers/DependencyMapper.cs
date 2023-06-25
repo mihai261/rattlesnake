@@ -1,4 +1,4 @@
-using Rattlesnake.Models;
+using Rattlesnake.LinkedModels;
 
 namespace Rattlesnake.Mappers;
 
@@ -44,7 +44,7 @@ public class DependencyMapper
             }
         }
         
-        // maybe import a class/function/constant from a module
+        // maybe import a class from a module
         if (!containingPackageName.Contains("."))
         {
             return (null, null);

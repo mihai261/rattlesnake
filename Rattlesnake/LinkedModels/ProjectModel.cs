@@ -1,13 +1,11 @@
-using System.Text.Json.Serialization;
 
-namespace Rattlesnake.Models;
+
+namespace Rattlesnake.LinkedModels;
 
 public class ProjectModel
 {
-    [JsonPropertyName("name")]
     public String Name { get; set; }
     
-    [JsonPropertyName("folders")]
     public List<FolderModel> FoldersList { get; set; }
 
     public ProjectModel()

@@ -2,6 +2,8 @@ import os
 import ast
 import sys
 import json
+import argparse
+import time
 
 imports_list = []
 classes_list = []
@@ -31,7 +33,7 @@ class SourceFile:
         self.methods = methods
 
 
-class Lines():
+class Lines:
     def __init__(self, lines_total, lines_code, lines_commented, lines_docs, lines_empty):
         self.lines_total = lines_total
         self.lines_code = lines_code
@@ -41,7 +43,7 @@ class Lines():
 
 
 class Method:
-    def __init__(self, name, lines,  complexity, decorators, args):
+    def __init__(self, name, lines, complexity, decorators, args):
         self.name = name
         self.lines = lines
         self.complexity = complexity
@@ -61,6 +63,7 @@ class Argument:
     def __init__(self, name, annotation):
         self.name = name
         self.annotation = annotation
+
 
 class Assignment:
     def __init__(self, variable_name, class_name):
@@ -92,8 +95,8 @@ def parse_attribute(attribute: ast.Attribute):
         return "error_parsing_in_Attr_node"
 
 
-class Analyzer(ast.NodeVisitor):
-    def visit_Import(self, node):
+class Extractor(ast.NodeVisitor):
+    def visit_Import(self, node: ast.Import):
         global imports_list
 
         for alias in node.names:
@@ -126,9 +129,10 @@ class Analyzer(ast.NodeVisitor):
                             func_name = statement.value.func.id
                         object_assignments.add(Assignment(statement.targets[0].id, func_name))
                     else:
-                        object_assignments = {element for element in object_assignments if element.variable_name != statement.targets[0].id}
+                        object_assignments = {element for element in object_assignments if
+                                              element.variable_name != statement.targets[0].id}
 
-        if node.bases != []:
+        if node.bases:
             bases_list = []
             for base in node.bases:
                 if isinstance(base, ast.Attribute):
@@ -141,16 +145,17 @@ class Analyzer(ast.NodeVisitor):
 
         self.generic_visit(node)
 
-
-    def calculate_node_complexity(self, node):
+    def calculate_node_complexity(self, node) -> int:
         node_complexity = 0
-        if isinstance(node, ast.If) or isinstance(node, ast.For) or isinstance(node, ast.While) or isinstance(node, ast.BoolOp) or isinstance(node, ast.ExceptHandler) or isinstance(node, ast.With) or isinstance(node, ast.Assert) or isinstance(node, ast.comprehension):
+        if isinstance(node, ast.If) or isinstance(node, ast.For) or isinstance(node, ast.While) or isinstance(node,
+                                                                                                              ast.BoolOp) or isinstance(
+                node, ast.ExceptHandler) or isinstance(node, ast.With) or isinstance(node, ast.Assert) or isinstance(
+                node, ast.comprehension):
             node_complexity += 1
         for child_node in ast.iter_child_nodes(node):
             node_complexity += self.calculate_node_complexity(child_node)
 
         return node_complexity
-
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
         global code
@@ -160,8 +165,8 @@ class Analyzer(ast.NodeVisitor):
         # calculate cyclomatic complexity (add one to account for start of method)
         method_complexity = self.calculate_node_complexity(node) + 1
 
-        for item in node.body:
-            self.generic_visit(item)
+        # for item in node.body:
+        #     self.generic_visit(item)
 
         decorator_names_list = []
         for decorator in node.decorator_list:
@@ -184,7 +189,8 @@ class Analyzer(ast.NodeVisitor):
             if type(node_parent) == ast.ClassDef:
                 for iclass in classes_list:
                     if iclass.name == node_parent.name:
-                        iclass.methods.append(Method.with_parent_class(node.name, lines, method_complexity, iclass.name, decorator_names_list, args_list))
+                        iclass.methods.append(Method.with_parent_class(node.name, lines, method_complexity, iclass.name,
+                                                                       decorator_names_list, args_list))
             else:
                 methods_list.append(Method(node.name, lines, method_complexity, decorator_names_list, args_list))
 
@@ -214,8 +220,7 @@ class Analyzer(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-
-def count_lines(code, start_line, end_line):
+def count_lines(code, start_line, end_line) -> dict:
     lines_total = 0
     lines_code = 0
     lines_commented = 0
@@ -228,7 +233,8 @@ def count_lines(code, start_line, end_line):
         line = next(code)
         line = line.strip()
         lines_total += 1
-        if (line.startswith("\"\"\"") or line.startswith("\'\'\'")) and (line.endswith("\"\"\"") or line.endswith("\'\'\'")):
+        if (line.startswith("\"\"\"") or line.startswith("\'\'\'")) and (
+                line.endswith("\"\"\"") or line.endswith("\'\'\'")):
             lines_docs += 1
         else:
             if (("\"\"\"" in line) or ("\'\'\'" in line)) and in_docstring:
@@ -254,22 +260,23 @@ def count_lines(code, start_line, end_line):
 
 
 def main():
+    start_time = time.time()
+
     global imports_list
     global classes_list
     global methods_list
     global calls_list
     global code
 
-    analyzer = Analyzer()
+    extractor = Extractor()
 
-    # TODO THIS IS FOR DEBBUGING; REMOVE WHEN DONE
-    if os.path.isfile(sys.argv[1]):
-        with open(sys.argv[1], 'r') as code:
-            syntax_tree = ast.parse(code.read())
-            print(ast.dump(syntax_tree, indent=4))
-            return
+    parser = argparse.ArgumentParser()
+    parser.add_argument("target", help="full path of the target project's directory")
+    parser.add_argument("--dest", help="full path to the desired output directory", default=".")
+    args = parser.parse_args()
+    outputDirectory = args.dest;
 
-    projectName = sys.argv[1].split("/")[-1]
+    projectName = args.target.split("/")[-1]
     if projectName == "": projectName = sys.argv[1].split("/")[-2]
     payload = Project(projectName, [])
 
@@ -291,7 +298,7 @@ def main():
                     pass
                 source.seek(0)
                 code = source
-                lines_json = count_lines(code, 0, line_count+1)
+                lines_json = count_lines(code, 0, line_count + 1)
 
                 imports_list = []
                 classes_list = []
@@ -299,14 +306,13 @@ def main():
                 calls_list = {}
 
                 syntax_tree = ast.parse(code.read())
-                # print(ast.dump(syntax_tree, indent=4))
                 for node in ast.walk(syntax_tree):
                     for child in ast.iter_child_nodes(node):
                         child.parent = node
                     if isinstance(node, ast.FunctionDef):
                         node.inner_calls = set()
 
-                analyzer.visit(syntax_tree)
+                extractor.visit(syntax_tree)
                 for key in calls_list:
                     for iclass in classes_list:
                         for method in iclass.methods:
@@ -332,11 +338,13 @@ def main():
 
     json_payload = json.dumps(payload.__dict__, indent=4)
 
-    file_path = "./results/probe_results.json"
+    file_path = f'{outputDirectory}/results/probe_results.json'
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     with open(file_path, "w") as f:
         f.write(json_payload)
 
+    end_time = time.time()
+    print(end_time - start_time)
 
 if __name__ == "__main__":
     main()

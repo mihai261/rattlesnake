@@ -1,4 +1,5 @@
-namespace Rattlesnake.Models;
+
+namespace Rattlesnake.LinkedModels;
 
 public class InternalDependency : InternalProjectComponent
 {

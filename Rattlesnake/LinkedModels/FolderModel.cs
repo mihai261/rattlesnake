@@ -1,6 +1,5 @@
-using System.Text.Json.Serialization;
 
-namespace Rattlesnake.Models;
+namespace Rattlesnake.LinkedModels;
 
 public class FolderModel : InternalProjectComponent
 {

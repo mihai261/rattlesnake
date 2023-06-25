@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Rattlesnake.Models;
+using Rattlesnake.LinkedModels;
 using Rattlesnake.RawModels;
 
 namespace Rattlesnake.Mappers;

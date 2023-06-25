@@ -1,7 +1,7 @@
 ﻿using System.Text.Json;
 using System.Text.RegularExpressions;
+using Rattlesnake.LinkedModels;
 using Rattlesnake.Mappers;
-using Rattlesnake.Models;
 using Rattlesnake.RawModels;
 
 namespace Rattlesnake
@@ -10,10 +10,18 @@ namespace Rattlesnake
 
         static void Main(string[] args)
         {
-            string path = args[0];
-            if (File.Exists(path))
+            var watch = new System.Diagnostics.Stopwatch();
+            
+            watch.Start();
+            string projectPath = args[0];
+            string outputDirectoryPath = Directory.GetCurrentDirectory();
+            if (args.Length == 2)
             {
-                string result = File.OpenText(path).ReadToEnd();
+                outputDirectoryPath = args[1];
+            }
+            if (File.Exists(projectPath))
+            {
+                string result = File.OpenText(projectPath).ReadToEnd();
                 RawProjectModel rawProject = JsonSerializer.Deserialize<RawProjectModel>(result);
 
                 ProjectModel project = new ProjectModel();
@@ -71,23 +79,22 @@ namespace Rattlesnake
                 }
                 
                 // create results directory if it does not exists
-                var projectDirectory = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName;
-                Directory.CreateDirectory($"{projectDirectory}/results");
+                Directory.CreateDirectory($"{outputDirectoryPath}/results");
                 
                 // create file stats results CSV
-                var fileStatsStream = File.Create($"{projectDirectory}/results/file_stats.csv");
+                var fileStatsStream = File.Create($"{outputDirectoryPath}/results/file_stats.csv");
                 var csvContentFileStats = "File, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Internal Dependencies, External Dependencies\n";
                 
                 // create file links results CSV
-                var fileLinksStream = File.Create($"{projectDirectory}/results/file_links.csv");
+                var fileLinksStream = File.Create($"{outputDirectoryPath}/results/file_links.csv");
                 var csvContentFileLinks = "Source, Destination, No. Of Bases Definitions, No. Of Method Calls\n";
                     
                 // create method statistics results CSV
-                var methodStatsStream = File.Create($"{projectDirectory}/results/method_stats.csv");
-                var csvContentMethodStats = "Method Name, Relative Path, Parent Class, Cyclomatic Complexity, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Total No. Of Subcalls, No. Of Local Subcalls, No. Of Internal Subcalls, No. Of External Subcalls\n";
+                var methodStatsStream = File.Create($"{outputDirectoryPath}/results/method_stats.csv");
+                var csvContentMethodStats = "Method Name, Relative Path, Parent Class, Cyclomatic Complexity, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines, Total No. Of Subcalls, No. Of Local Subcalls, No. Of Internal Subcalls, No. Of External Subcalls, Percentage of mapped subcalls\n";
                 
                 // create class statistics results CSV
-                var classStatsStream = File.Create($"{projectDirectory}/results/class_stats.csv");
+                var classStatsStream = File.Create($"{outputDirectoryPath}/results/class_stats.csv");
                 var csvContentClassStats = "Class Name, Relative Path, Total Cyclomatic Complexity, Local Bases, Internal Bases, External Bases, Total Lines, Lines Of Code, Commented Lines, Docstring Lines, Empty Lines\n";
 
                 // map non-local dependencies
@@ -115,7 +122,7 @@ namespace Rattlesnake
                                 {
                                     alteredPath = alteredPath.Substring(project.Name.Length);
                                 }
-                                internalDepsPathSet.Add(alteredPath);
+                                internalDepsPathSet.Add(alteredPath.Substring(1));
 
                                 if (linkedClass != null)
                                 {
@@ -225,7 +232,7 @@ namespace Rattlesnake
                             }
 
                             csvContentClassStats +=
-                                $"{fullClassName}, {cls.RelativePath.Substring(project.Name.Length)}, {totalComplexity}, {localBasesNamesListStr}, {internalBasesNamesListStr}, {externalBasesNamesListStr}, {cls.Lines.LinesTotal}, {cls.Lines.LinesCoded}, {cls.Lines.LinesCommented}, {cls.Lines.linesDocs}, {cls.Lines.LinesEmpty}\n";
+                                $"{fullClassName}, {cls.RelativePath.Substring(project.Name.Length + 1)}, {totalComplexity}, {localBasesNamesListStr}, {internalBasesNamesListStr}, {externalBasesNamesListStr}, {cls.Lines.LinesTotal}, {cls.Lines.LinesCoded}, {cls.Lines.LinesCommented}, {cls.Lines.linesDocs}, {cls.Lines.LinesEmpty}\n";
                         }
                         
                         // build file method stats CSV content
@@ -233,8 +240,11 @@ namespace Rattlesnake
                         {
                             var parent = method.Parent != "*" ? method.Parent : "N/A";
                             var fullMethodName = method.RelativePath.Replace("/", ".").Replace(".py", ".") + method.Name;
+                            var mappingPercentage =
+                                (int)((method.InternalSubCallsList.Count + method.ExternalSubCallsList.Count +
+                                  method.LocalSubCallsList.Count) / (float)method.TotalNumberOfSubCalls * 100);
                             csvContentMethodStats +=
-                                $"{fullMethodName}, {method.RelativePath.Substring(project.Name.Length)}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count}, {method.ExternalSubCallsList.Count}\n";
+                                $"{fullMethodName}, {method.RelativePath.Substring(project.Name.Length + 1)}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count}, {method.ExternalSubCallsList.Count}, {mappingPercentage}\n";
                         }
                         
                         // build class method stats CSV content
@@ -244,28 +254,32 @@ namespace Rattlesnake
                             {
                                 var parent = method.Parent != "*" ? method.Parent : "N/A";
                                 var fullMethodName = method.RelativePath.Replace("/", ".").Replace(".py", ".") + $"{parent}." + method.Name;
+                                var mappingPercentage =
+                                    (int)((method.InternalSubCallsList.Count + method.ExternalSubCallsList.Count +
+                                      method.LocalSubCallsList.Count) / (float) method.TotalNumberOfSubCalls * 100);
                                 csvContentMethodStats +=
-                                    $"{fullMethodName}, {method.RelativePath.Substring(project.Name.Length)}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count},  {method.ExternalSubCallsList.Count}\n";
+                                    $"{fullMethodName}, {method.RelativePath.Substring(project.Name.Length + 1)}, {parent}, {method.CyclomaticComplexity}, {method.Lines.LinesTotal}, {method.Lines.LinesCoded}, {method.Lines.LinesCommented}, {method.Lines.linesDocs}, {method.Lines.LinesEmpty}, {method.TotalNumberOfSubCalls}, {method.LocalSubCallsList.Count}, {method.InternalSubCallsList.Count},  {method.ExternalSubCallsList.Count}, {mappingPercentage}\n";
                             }
                         }
                         
                         // build file stats CSV content
-                        csvContentFileStats += $"{file.RelativePath.Substring(project.Name.Length)}, {file.Lines.LinesTotal}, {file.Lines.LinesCoded}, {file.Lines.LinesCommented}, {file.Lines.linesDocs}, {file.Lines.LinesEmpty}, {internalDepsPathList}, {externalDepsPathList}\n";
+                        csvContentFileStats += $"{file.RelativePath.Substring(project.Name.Length + 1)}, {file.Lines.LinesTotal}, {file.Lines.LinesCoded}, {file.Lines.LinesCommented}, {file.Lines.linesDocs}, {file.Lines.LinesEmpty}, {internalDepsPathList}, {externalDepsPathList}\n";
                         
                         // build file links CSV content
                         foreach (var relation in file.DependencyRelations)
                         {
                             csvContentFileLinks +=
-                                $"{file.RelativePath.Substring(project.Name.Length)}, {relation.Destination.RelativePath.Substring(project.Name.Length)}, {relation.NumberOfBaseDefinitions}, {relation.NumberOfMethodCalls}\n";
+                                $"{file.RelativePath.Substring(project.Name.Length + 1)}, {relation.Destination.RelativePath.Substring(project.Name.Length + 1)}, {relation.NumberOfBaseDefinitions}, {relation.NumberOfMethodCalls}\n";
                         }
                         
                         foreach (var relation in file.ExternalDependencyRelations)
                         {
                             csvContentFileLinks +=
-                                $"{file.RelativePath.Substring(project.Name.Length)}, {relation.Destination.Name}, {relation.NumberOfBaseDefinitions}, {relation.NumberOfMethodCalls}\n";
+                                $"{file.RelativePath.Substring(project.Name.Length + 1)}, {relation.Destination.Name}, {relation.NumberOfBaseDefinitions}, {relation.NumberOfMethodCalls}\n";
                         }
                     }
                 }
+                
                 
                 // write file stats
                 using (StreamWriter writer = new StreamWriter(fileStatsStream))
@@ -295,6 +309,10 @@ namespace Rattlesnake
             {
                 throw new ArgumentException("Invalid file path!");
             }
+            
+            watch.Stop();
+
+            Console.WriteLine($"Execution Time: {(float) watch.ElapsedMilliseconds/1000} s");
         }
     }
 }

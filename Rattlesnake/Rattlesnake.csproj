@@ -7,11 +7,13 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <PropertyGroup>
+        <NoWarn>8602,8618,8600,8601,8604</NoWarn>
+    </PropertyGroup>
+
     <ItemGroup>
-      <Folder Include="python_scripts\results" />
       <Folder Include="RawModels" />
-      <Folder Include="python_scripts" />
-      <Folder Include="results" />
+      <Folder Include="LinkedModels" />
     </ItemGroup>
 
 </Project>

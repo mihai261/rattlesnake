@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Rattlesnake.Models;
+namespace Rattlesnake.LinkedModels;
 
 public class ClassModel : InternalProjectComponent
 {
@@ -8,7 +8,6 @@ public class ClassModel : InternalProjectComponent
     
     [JsonPropertyName("lines")]
     public LinesOfCode Lines { get; set; }
-    public String RelativePath { get; set; }
     public HashSet<MethodModel> MethodsList { get; set; }
     public List<ObjectAssignmentModel> ObjectAssignments { get; set; }
     public List<ClassModel> LocalSuperClassesList { get; set; }

@@ -1,7 +1,6 @@
-using System.Collections.Immutable;
 using System.Text.Json.Serialization;
 
-namespace Rattlesnake.Models;
+namespace Rattlesnake.LinkedModels;
 
 public class MethodModel : InternalProjectComponent
 {

@@ -19,9 +19,6 @@ public class RawMethodModel
     [JsonPropertyName("decorators")]
     public List<String> DecoratorsList { get; set; }
 
-    [JsonPropertyName("args")]
-    public List<RawArgumentModel> ArgumentsList { get; set; }
-    
     [JsonPropertyName("sub_calls")]
     public List<String> SubCallsList { get; set; }
 }

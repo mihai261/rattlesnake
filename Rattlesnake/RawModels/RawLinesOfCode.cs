@@ -14,7 +14,7 @@ public class RawLinesOfCode
     public int LinesCommented { get; set; }
     
     [JsonPropertyName("lines_docs")]
-    public int linesDocs { get; set; }
+    public int LinesDocs { get; set; }
     
     [JsonPropertyName("lines_empty")]
     public int LinesEmpty { get; set; }

@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Rattlesnake.Models;
+using Rattlesnake.LinkedModels;
 using Rattlesnake.RawModels;
 
 namespace Rattlesnake.Mappers;
@@ -48,9 +48,6 @@ public class ClassMapper
                     {
                         if (key.Name.Equals(baseClassName))
                         {
-                            // // remove mapped base class from raw list to speed up the next mapping process
-                            // rawFile.ClassesList.Find(x => x.Name == currentClass.Name).LocalSuperClassesList
-                            //     .Remove(baseClassName);
                             currentClass.LocalSuperClassesList.Add(key);
                         }
                     }
