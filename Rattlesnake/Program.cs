@@ -10,9 +10,6 @@ namespace Rattlesnake
 
         static void Main(string[] args)
         {
-            var watch = new System.Diagnostics.Stopwatch();
-            
-            watch.Start();
             string projectPath = args[0];
             string outputDirectoryPath = Directory.GetCurrentDirectory();
             if (args.Length == 2)
@@ -309,10 +306,6 @@ namespace Rattlesnake
             {
                 throw new ArgumentException("Invalid file path!");
             }
-            
-            watch.Stop();
-
-            Console.WriteLine($"Execution Time: {(float) watch.ElapsedMilliseconds/1000} s");
         }
     }
 }
